@@ -42,8 +42,6 @@ MapNames::MapTy CuDNNTypeRule::CuDNNEnumNamesMap;
 std::map<std::string /*Original API*/, HelperFeatureEnum>
     CuDNNTypeRule::CuDNNEnumNamesHelperFeaturesMap;
 MapNames::ThrustMapTy MapNames::ThrustFuncNamesMap;
-std::map<std::string /*Original API*/, HelperFeatureEnum>
-    MapNames::ThrustFuncNamesHelperFeaturesMap;
 MapNames::MapTy MapNames::MathFuncNameMap;
 std::unordered_set<std::string> MapNames::MathFuncImpledWithNewRewriter;
 std::unordered_map<std::string, std::string> MapNames::AtomicFuncNamesMap;
@@ -1315,26 +1313,6 @@ void MapNames::setExplicitNamespaceMap() {
 #undef ENTRY_DEVICE
 #undef ENTRY_BOTH
   };
-
-  ThrustFuncNamesHelperFeaturesMap = {
-      {"thrust::sequence", HelperFeatureEnum::DplExtrasAlgorithm_iota},
-      {"thrust::stable_sort_by_key",
-       HelperFeatureEnum::DplExtrasAlgorithm_stable_sort},
-      {"thrust::transform_if",
-       HelperFeatureEnum::DplExtrasAlgorithm_transform_if},
-      {"thrust::device_free", HelperFeatureEnum::DplExtrasMemory_free_device},
-      {"thrust::device_malloc",
-       HelperFeatureEnum::DplExtrasMemory_malloc_device},
-      {"thrust::raw_pointer_cast",
-       HelperFeatureEnum::DplExtrasMemory_get_raw_pointer},
-      {"thrust::make_counting_iterator",
-       HelperFeatureEnum::DplExtrasIterators_make_counting_iterator},
-      {"thrust::device_pointer_cast",
-       HelperFeatureEnum::DplExtrasMemory_get_device_pointer},
-      {"thrust::make_constant_iterator",
-       HelperFeatureEnum::DplExtrasIterators_make_constant_iterator},
-      {"thrust::partition_point",
-       HelperFeatureEnum::DplExtrasAlgorithm_partition_point}};
 
   ITFName = {
 #define ENTRY(INTERFACENAME, APINAME, VALUE, FLAG, TARGET, COMMENT)            \

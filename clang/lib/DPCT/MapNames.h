@@ -334,8 +334,6 @@ public:
       BLASFuncComplexReplInfoMap;
   static const SetTy ThrustFileExcludeSet;
   static ThrustMapTy ThrustFuncNamesMap;
-  static std::map<std::string, clang::dpct::HelperFeatureEnum>
-      ThrustFuncNamesHelperFeaturesMap;
 
   static const std::map<std::string, MapNames::BLASFuncComplexReplInfo>
       LegacyBLASFuncReplInfoMap;

@@ -47,7 +47,6 @@ public:
             break;
           }
         }
-        requestFeature(HelperFeatureEnum::BlasUtils_get_transpose, E);
         Stream << MapNames::getDpctNamespace() << "get_transpose(";
         clang::dpct::print(Stream, SubExpr);
         Stream << ")";

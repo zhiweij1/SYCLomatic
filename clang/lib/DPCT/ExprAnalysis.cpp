@@ -494,7 +494,6 @@ void ExprAnalysis::analyzeExpr(const DeclRefExpr *DRE) {
 
     auto &ReplEnum =
         MapNames::findReplacedName(EnumConstantRule::EnumNamesMap, RefString);
-    requestHelperFeatureForEnumNames(RefString, DRE);
     auto ItEnum = EnumConstantRule::EnumNamesMap.find(RefString);
     if (ItEnum != EnumConstantRule::EnumNamesMap.end()) {
       for (auto ItHeader = ItEnum->second->Includes.begin();
@@ -732,14 +731,11 @@ void ExprAnalysis::analyzeExpr(const MemberExpr *ME) {
         TmplArg = "<int *>";
       }
       addReplacement(ME->getMemberLoc(), "get_" + ReplacementStr + TmplArg + "()");
-      requestFeature(
-          PropToGetFeatureMap.at(ME->getMemberNameInfo().getAsString()), ME);
     }
   } else if (BaseType == "textureReference") {
     std::string FieldName = ME->getMemberDecl()->getName().str();
     if (MapNames::replaceName(TextureRule::TextureMemberNames, FieldName)) {
       addReplacement(ME->getMemberLoc(), buildString("get_", FieldName, "()"));
-      requestFeature(ImageWrapperBaseToGetFeatureMap.at(FieldName), ME);
     }
   } else if (MapNames::SupportedVectorTypes.find(BaseType) !=
              MapNames::SupportedVectorTypes.end()) {
@@ -1148,12 +1144,10 @@ void ExprAnalysis::analyzeType(TypeLoc TL, const Expr *CSCE) {
   auto Iter = MapNames::TypeNamesMap.find(TyName);
   if (Iter != MapNames::TypeNamesMap.end()) {
     HelperFeatureSet.insert(Iter->second->RequestFeature);
-    requestHelperFeatureForTypeNames(TyName, SR.getBegin());
   } else {
     Iter = MapNames::CuDNNTypeNamesMap.find(TyName);
     if (Iter != MapNames::CuDNNTypeNamesMap.end()) {
       HelperFeatureSet.insert(Iter->second->RequestFeature);
-      requestHelperFeatureForTypeNames(TyName, SR.getBegin());
     }
   }
 
@@ -1358,9 +1352,6 @@ void ManagedPointerAnalysis::buildCallExprRepl() {
   } else {
     OS << " = ";
   }
-  requestFeature(HelperFeatureEnum::Memory_dpct_malloc, Call);
-  requestFeature(HelperFeatureEnum::Memory_dpct_malloc_2d, Call);
-  requestFeature(HelperFeatureEnum::Memory_dpct_malloc_3d, Call);
   OS << MapNames::getDpctNamespace() << "dpct_malloc(";
   ExprAnalysis ArgEA(SecondArg);
   ArgEA.analyze();
@@ -1368,7 +1359,6 @@ void ManagedPointerAnalysis::buildCallExprRepl() {
   if (Assigned) {
     OS << ")";
     auto LocInfo = DpctGlobalInfo::getLocInfo(Call);
-    requestFeature(HelperFeatureEnum::Dpct_check_error_code, Call);
   }
   addReplacement(Call->getBeginLoc(), Call->getEndLoc(), OS.str());
 }
@@ -1507,7 +1497,6 @@ void ManagedPointerAnalysis::analyzeExpr(const UnaryOperator *UO) {
       ExprAnalysis EA(SubE);
       EA.analyze();
       std::string Rep = EA.getReplacedString();
-      requestFeature(HelperFeatureEnum::Memory_get_host_ptr, Call);
       if (SubE->IgnoreImplicitAsWritten()->getStmtClass() ==
           Stmt::ParenExprClass) {
         Repl.push_back(
@@ -1558,7 +1547,6 @@ void ManagedPointerAnalysis::analyzeExpr(const ArraySubscriptExpr *ASE) {
     Repl.push_back({{Base->getBeginLoc(), Base->getEndLoc()},
                     std::string(MapNames::getDpctNamespace() + "get_host_ptr<" +
                                 PointerTempType + ">(" + PointerName + ")")});
-    requestFeature(HelperFeatureEnum::Memory_get_host_ptr, Call);
   }
 }
 void KernelArgumentAnalysis::dispatch(const Stmt *Expression) {
@@ -1654,8 +1642,6 @@ void KernelArgumentAnalysis::analyzeExpr(const DeclRefExpr *DRE) {
                            DpctGlobalInfo::getContext().getLangOpts()),
                        DRE->getEndLoc(), "[0]");
       } else {
-        requestFeature(HelperFeatureEnum::Memory_device_memory_get_ptr,
-                       DRE->getEndLoc());
         addReplacement(Lexer::getLocForEndOfToken(
                            DRE->getEndLoc(), 0, SM,
                            DpctGlobalInfo::getContext().getLangOpts()),

@@ -540,7 +540,6 @@ makeFuncNameFromDevAttrCreator(unsigned idx) {
       auto ArgName = DRE->getNameInfo().getAsString();
       auto Search = EnumConstantRule::EnumNamesMap.find(ArgName);
       if (Search != EnumConstantRule::EnumNamesMap.end()) {
-        requestHelperFeatureForEnumNames(ArgName, CE);
         return Search->second->NewName;
       }
     }
@@ -1169,31 +1168,6 @@ createInsertAroundFactory(
       std::make_shared<InsertAroundRewriterFactory>(
           Input.second, std::move(Prefix), std::move(Suffix)));
 }
-
-/// Create RewriterFactoryWithFeatureRequest key-value pair with inner
-/// key-value. Will call requestFeature when used to create CallExprRewriter.
-inline std::pair<std::string, std::shared_ptr<CallExprRewriterFactoryBase>>
-createFeatureRequestFactory(
-    HelperFeatureEnum Feature,
-    std::pair<std::string, std::shared_ptr<CallExprRewriterFactoryBase>>
-        &&Input) {
-  return std::pair<std::string, std::shared_ptr<CallExprRewriterFactoryBase>>(
-      std::move(Input.first),
-      std::make_shared<RewriterFactoryWithFeatureRequest>(Feature,
-                                                          Input.second));
-}
-/// Create RewriterFactoryWithFeatureRequest key-value pair with inner
-/// key-value. Will call requestFeature when used to create CallExprRewriter.
-template <class T>
-inline std::pair<std::string, std::shared_ptr<CallExprRewriterFactoryBase>>
-createFeatureRequestFactory(
-    HelperFeatureEnum Feature,
-    std::pair<std::string, std::shared_ptr<CallExprRewriterFactoryBase>>
-        &&Input,
-    T) {
-  return createFeatureRequestFactory(Feature, std::move(Input));
-}
-
 
 /// Create RewriterFactoryWithHeaderFile key-value pair with inner
 /// key-value. Will call insertHeader when used to create CallExprRewriter.
@@ -1931,8 +1905,6 @@ public:
   createAssignableFactoryWithExtraParen(x 0),
 #define INSERT_AROUND_FACTORY(x, PREFIX, SUFFIX)                               \
   createInsertAroundFactory(x PREFIX, SUFFIX),
-#define FEATURE_REQUEST_FACTORY(FEATURE, x)                                    \
-  createFeatureRequestFactory(FEATURE, x 0),
 #define HEADER_INSERT_FACTORY(HEADER, x) createInsertHeaderFactory(HEADER, x 0),
 #define SUBGROUPSIZE_FACTORY(IDX, NEWFUNCNAME, x)                              \
   createFactoryWithSubGroupSizeRequest<IDX>(NEWFUNCNAME, x 0),

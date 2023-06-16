@@ -47,23 +47,6 @@ public:
   }
 };
 
-class MemberExprRewriterWithFeatureRequestFactory
-    : public MemberExprRewriterFactoryBase {
-  std::shared_ptr<MemberExprRewriterFactoryBase> Inner;
-  HelperFeatureEnum Feature;
-
-public:
-  MemberExprRewriterWithFeatureRequestFactory(
-      HelperFeatureEnum Feature,
-      std::shared_ptr<MemberExprRewriterFactoryBase> InnerFactory)
-      : Inner(InnerFactory), Feature(Feature) {}
-  std::shared_ptr<MemberExprBaseRewriter>
-  create(const MemberExpr *M) const override {
-    requestFeature(Feature, M);
-    return Inner->create(M);
-  }
-};
-
 std::function<std::string(const MemberExpr *)> makeMemberBase() {
   return [=] (const MemberExpr *ME) -> std::string {
     auto Base = ME->getBase()->IgnoreImpCasts();
@@ -110,27 +93,6 @@ createReportMemWarningRewriterFactory(
       Factory.second, FuncName, MsgId, ArgsCreator...);
 }
 
-std::pair<std::string, std::shared_ptr<MemberExprRewriterFactoryBase>>
-createMemberExprFeatureRequestFactory(
-    HelperFeatureEnum Feature,
-    std::pair<std::string, std::shared_ptr<MemberExprRewriterFactoryBase>>
-        &&Input) {
-  return std::pair<std::string, std::shared_ptr<MemberExprRewriterFactoryBase>>(
-      std::move(Input.first),
-      std::make_shared<MemberExprRewriterWithFeatureRequestFactory>(
-          Feature, Input.second));
-}
-
-template <class T>
-std::pair<std::string, std::shared_ptr<MemberExprRewriterFactoryBase>>
-createMemberExprFeatureRequestFactory(
-    HelperFeatureEnum Feature,
-    std::pair<std::string, std::shared_ptr<MemberExprRewriterFactoryBase>>
-        &&Input,
-    T) {
-  return createMemberExprFeatureRequestFactory(Feature, std::move(Input));
-}
-
 void MemberExprRewriterFactoryBase::initMemberExprRewriterMap() {
     MemberExprRewriterMap = std::make_unique<std::unordered_map<
       std::string, std::shared_ptr<MemberExprRewriterFactoryBase>>>(
@@ -146,10 +108,7 @@ void MemberExprRewriterFactoryBase::initMemberExprRewriterMap() {
 #define MEM_CALL(x) makeMemberGetCall(x)
 #define LITERAL(x) makeLiteral(x)
 #define IS_ARROW isArrow()
-#define FEATURE_REQUEST_FACTORY(FEATURE, x)                                    \
-  createMemberExprFeatureRequestFactory(FEATURE, x 0),
 #include "APINamesMemberExpr.inc"
-#undef FEATURE_REQUEST_FACTORY
 #undef IS_ARROW
 #undef LITERAL
 #undef MEM_CALL

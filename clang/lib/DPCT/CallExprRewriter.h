@@ -273,8 +273,6 @@ public:
                      bool EP = false)
       : CallExprRewriter(C, ""), Inner(InnerRewriter),
         IsAssigned(isAssigned(C)), ExtraParen(EP) {
-    if (IsAssigned)
-      requestFeature(HelperFeatureEnum::Dpct_check_error_code, C);
   }
 
   std::optional<std::string> rewrite() override {
@@ -392,21 +390,6 @@ public:
   std::shared_ptr<CallExprRewriter> create(const CallExpr *C) const override {
     return std::make_shared<InsertAroundRewriter>(C, Prefix, Suffix,
                                                   Inner->create(C));
-  }
-};
-
-class RewriterFactoryWithFeatureRequest : public CallExprRewriterFactoryBase {
-  std::shared_ptr<CallExprRewriterFactoryBase> Inner;
-  HelperFeatureEnum Feature;
-
-public:
-  RewriterFactoryWithFeatureRequest(
-      HelperFeatureEnum Feature,
-      std::shared_ptr<CallExprRewriterFactoryBase> InnerFactory)
-      : Inner(InnerFactory), Feature(Feature) {}
-  std::shared_ptr<CallExprRewriter> create(const CallExpr *C) const override {
-    requestFeature(Feature, C);
-    return Inner->create(C);
   }
 };
 

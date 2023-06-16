@@ -907,9 +907,6 @@ void CubRule::processBlockLevelMemberCall(const CXXMemberCallExpr *BlockMC) {
             OpRepl = getOpRepl(FuncArgs[3]);
             NewFuncName =
                 MapNames::getDpctNamespace() + "group::exclusive_scan";
-            requestFeature(
-                HelperFeatureEnum::DplExtrasDpcppExtensions_exclusive_scan,
-                BlockMC);
             DpctGlobalInfo::getInstance().insertHeader(BlockMC->getBeginLoc(),
                                                        HT_DPCT_DPL_Utils);
             IsReferenceOutput = true;
@@ -938,9 +935,6 @@ void CubRule::processBlockLevelMemberCall(const CXXMemberCallExpr *BlockMC) {
             OpRepl = getOpRepl(FuncArgs[2]);
             NewFuncName =
                 MapNames::getDpctNamespace() + "group::exclusive_scan";
-            requestFeature(
-                HelperFeatureEnum::DplExtrasDpcppExtensions_exclusive_scan,
-                BlockMC);
             DpctGlobalInfo::getInstance().insertHeader(BlockMC->getBeginLoc(),
                                                        HT_DPCT_DPL_Utils);
           }
@@ -957,9 +951,6 @@ void CubRule::processBlockLevelMemberCall(const CXXMemberCallExpr *BlockMC) {
           OpRepl = getOpRepl(FuncArgs[3]);
           AggregateOrCallback = AggregateOrCallbackEA.getReplacedString();
           NewFuncName = MapNames::getDpctNamespace() + "group::exclusive_scan";
-          requestFeature(
-              HelperFeatureEnum::DplExtrasDpcppExtensions_exclusive_scan,
-              BlockMC);
           DpctGlobalInfo::getInstance().insertHeader(BlockMC->getBeginLoc(),
                                                      HT_DPCT_DPL_Utils);
         } else {
@@ -977,9 +968,6 @@ void CubRule::processBlockLevelMemberCall(const CXXMemberCallExpr *BlockMC) {
           GroupOrWorkitem = DpctGlobalInfo::getItem(BlockMC);
           OpRepl = getOpRepl(FuncArgs[2]);
           NewFuncName = MapNames::getDpctNamespace() + "group::inclusive_scan";
-          requestFeature(
-              HelperFeatureEnum::DplExtrasDpcppExtensions_inclusive_scan,
-              BlockMC);
           DpctGlobalInfo::getInstance().insertHeader(BlockMC->getBeginLoc(),
                                                      HT_DPCT_DPL_Utils);
           IsReferenceOutput = true;
@@ -1002,9 +990,6 @@ void CubRule::processBlockLevelMemberCall(const CXXMemberCallExpr *BlockMC) {
         ExprAnalysis AggregateOrCallbackEA(FuncArgs[3]);
         AggregateOrCallback = AggregateOrCallbackEA.getReplacedString();
         NewFuncName = MapNames::getDpctNamespace() + "group::inclusive_scan";
-        requestFeature(
-            HelperFeatureEnum::DplExtrasDpcppExtensions_exclusive_scan,
-            BlockMC);
         DpctGlobalInfo::getInstance().insertHeader(BlockMC->getBeginLoc(),
                                                    HT_DPCT_DPL_Utils);
       }
@@ -1017,9 +1002,6 @@ void CubRule::processBlockLevelMemberCall(const CXXMemberCallExpr *BlockMC) {
                 ->getType()
                 ->isLValueReferenceType()) {
           NewFuncName = MapNames::getDpctNamespace() + "group::exclusive_scan";
-          requestFeature(
-              HelperFeatureEnum::DplExtrasDpcppExtensions_exclusive_scan,
-              BlockMC);
           DpctGlobalInfo::getInstance().insertHeader(BlockMC->getBeginLoc(),
                                                      HT_DPCT_DPL_Utils);
           GroupOrWorkitem = DpctGlobalInfo::getItem(BlockMC);
@@ -1047,9 +1029,6 @@ void CubRule::processBlockLevelMemberCall(const CXXMemberCallExpr *BlockMC) {
           ExprAnalysis AggregateOrCallbackEA(FuncArgs[2]);
           AggregateOrCallback = AggregateOrCallbackEA.getReplacedString();
           NewFuncName = MapNames::getDpctNamespace() + "group::exclusive_scan";
-          requestFeature(
-              HelperFeatureEnum::DplExtrasDpcppExtensions_exclusive_scan,
-              BlockMC);
           DpctGlobalInfo::getInstance().insertHeader(BlockMC->getBeginLoc(),
                                                      HT_DPCT_DPL_Utils);
         } else {
@@ -1067,9 +1046,6 @@ void CubRule::processBlockLevelMemberCall(const CXXMemberCallExpr *BlockMC) {
           GroupOrWorkitem = DpctGlobalInfo::getItem(BlockMC);
           OpRepl = getOpRepl(nullptr);
           NewFuncName = MapNames::getDpctNamespace() + "group::inclusive_scan";
-          requestFeature(
-              HelperFeatureEnum::DplExtrasDpcppExtensions_inclusive_scan,
-              BlockMC);
           DpctGlobalInfo::getInstance().insertHeader(BlockMC->getBeginLoc(),
                                                      HT_DPCT_DPL_Utils);
           IsReferenceOutput = true;
@@ -1092,9 +1068,6 @@ void CubRule::processBlockLevelMemberCall(const CXXMemberCallExpr *BlockMC) {
         ExprAnalysis AggregateOrCallbackEA(FuncArgs[2]);
         AggregateOrCallback = AggregateOrCallbackEA.getReplacedString();
         NewFuncName = MapNames::getDpctNamespace() + "group::inclusive_scan";
-        requestFeature(
-            HelperFeatureEnum::DplExtrasDpcppExtensions_inclusive_scan,
-            BlockMC);
         DpctGlobalInfo::getInstance().insertHeader(BlockMC->getBeginLoc(),
                                                    HT_DPCT_DPL_Utils);
       }
@@ -1122,8 +1095,6 @@ void CubRule::processBlockLevelMemberCall(const CXXMemberCallExpr *BlockMC) {
             ->isLValueReferenceType()) {
       GroupOrWorkitem = DpctGlobalInfo::getItem(BlockMC);
       NewFuncName = MapNames::getDpctNamespace() + "group::reduce";
-      requestFeature(HelperFeatureEnum::DplExtrasDpcppExtensions_reduce,
-                     BlockMC);
       DpctGlobalInfo::getInstance().insertHeader(BlockMC->getBeginLoc(),
                                                  HT_DPCT_DPL_Utils);
     } else {

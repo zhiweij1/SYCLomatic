@@ -39,11 +39,9 @@ MEMBER_REWRITE_ENTRY(
 
 WARNING_FACTORY_ENTRY(
     "cudaDeviceProp.totalConstMem",
-    FEATURE_REQUEST_FACTORY(
-        HelperFeatureEnum::Device_device_info_get_global_mem_size,
         MEMBER_REWRITE_ENTRY("cudaDeviceProp.totalConstMem",
                              MEMBER_FACTORY(MEM_BASE, IS_ARROW,
-                                            MEM_CALL("get_global_mem_size")))),
+                                            MEM_CALL("get_global_mem_size"))),
     Diagnostics::UNCOMPATIBLE_DEVICE_PROP, std::string("totalConstMem"),
     std::string("get_global_mem_size"))
 

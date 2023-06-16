@@ -114,13 +114,6 @@ void ThrustAPIRule::thrustFuncMigration(const MatchFinder::MatchResult &Result,
   LangOptions LO;
   std::string ArgT = QT.getAsString(PrintingPolicy(LO));
 
-  // For the API migration defined in APINamesMapThrust.inc
-  auto HelperFeatureIter = MapNames::ThrustFuncNamesHelperFeaturesMap.find(
-      ThrustFuncNameWithNamespace);
-  if (HelperFeatureIter != MapNames::ThrustFuncNamesHelperFeaturesMap.end()) {
-    requestFeature(HelperFeatureIter->second, CE);
-  }
-
   auto NewName = ReplInfo->second.ReplName;
 
   bool hasExecutionPolicy =
@@ -290,7 +283,6 @@ void ThrustTypeRule::runRule(
       std::string Replacement =
           MapNames::findReplacedName(MapNames::TypeNamesMap, ThrustVarName);
       insertHeaderForTypeRule(ThrustVarName, DRE->getBeginLoc());
-      requestHelperFeatureForTypeNames(ThrustVarName, DRE);
       if (Replacement == "oneapi::dpl::execution::dpcpp_default")
         Replacement = makeDevicePolicy(DRE);
 

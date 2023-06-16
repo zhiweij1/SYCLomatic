@@ -23,7 +23,6 @@ TextModification* processFunctionPointer(const UnaryOperator *UO) {
   StringRef FuncNameRef = FD->getName();
   std::string ParameterTypes = MapNames::getDpctNamespace() +
                                "fft::fft_engine_ptr engine";
-  requestFeature(HelperFeatureEnum::FftUtils_fft_engine, UO->getBeginLoc());
   std::string Dir;
   std::string NewFuncName;
   if (FuncNameRef == "cufftExecC2C") {

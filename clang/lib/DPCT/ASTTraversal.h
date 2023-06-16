@@ -345,8 +345,6 @@ protected:
       if (Flags.IsAssigned) {
         insertAroundRange(Locations.FuncNameBegin, Locations.FuncCallEnd,
                           "DPCT_CHECK_ERROR(", ")");
-        requestFeature(HelperFeatureEnum::Dpct_check_error_code,
-                       Locations.PrefixInsertLoc);
       }
 
       emplaceTransformation(new ReplaceStmt(CE, true, Strings.Repl));
@@ -788,7 +786,6 @@ public:
                    "get_default_queue().memcpy(" +
                    ExprAnalysis::ref(CE->getArg(Idx)) + ", " + Var +
                    ", sizeof(" + Type + ")*" + Size + ").wait();";
-          requestFeature(HelperFeatureEnum::Device_get_default_queue, CE);
         }
       };
 
@@ -801,7 +798,6 @@ public:
         declareTempArgs(X1Ptr, "x1_ct", Type, 3);
         declareTempArgs(ParamPtr, "param_ct", Type, 5);
 
-        requestFeature(HelperFeatureEnum::Device_get_default_queue, CE);
         Prefix = Prefix + IfStmtStr + getNL() + IndentStr;
         Prefix = Prefix + "  " + D1Ptr + " = " + MapNames::getClNamespace() +
                  "malloc_shared<" + Type + ">(8, " +
@@ -856,7 +852,6 @@ public:
         declareTempArgs(CPtr, "c_ct", RealType, 3);
         declareTempArgs(SPtr, "s_ct", Type, 4);
 
-        requestFeature(HelperFeatureEnum::Device_get_default_queue, CE);
         Prefix = Prefix + IfStmtStr + getNL() + IndentStr;
         if (FuncName == "cublasSrotg_v2" || FuncName == "cublasDrotg_v2") {
           Prefix = Prefix + "  " + APtr + " = " + MapNames::getClNamespace() +
@@ -939,7 +934,6 @@ public:
 
       std::string IfStmtStr = getIfStmtStr(EA.getReplacedString());
 
-      requestFeature(HelperFeatureEnum::Device_get_default_queue, CE);
       PrefixInsertStr = OriginType + "* " + ResultTempPtr + " = " +
                         EA.getReplacedString() + ";" + getNL() + IndentStr +
                         IfStmtStr + getNL() + IndentStr + "  " + ResultTempPtr +
@@ -979,7 +973,6 @@ public:
         (FuncName == "cublasSrotmg_v2" || FuncName == "cublasDrotmg_v2") &&
         (ArgIndex == 5);
 
-    requestFeature(HelperFeatureEnum::Memory_get_buffer_T, CE);
     SyncAPIBufferAssignmentInThenBlock.emplace_back(
         BufferName + " = " + MapNames::getDpctNamespace() + "get_buffer<" +
         Type + ">(" + PointerStr + ");");
@@ -1007,7 +1000,6 @@ public:
     };
 
     auto assembleIfStmt = [&]() {
-      requestFeature(HelperFeatureEnum::Memory_is_device_ptr, CE);
       std::string IfStmtStr = "if (" + MapNames::getDpctNamespace() +
                               "is_device_ptr(" + PointerStr + ")) {" + getNL() +
                               IndentStr +
@@ -1105,7 +1097,6 @@ public:
                                             std::move(CallExprReplStr)));
       if (IsAssigned) {
         insertAroundRange(FuncNameBegin, FuncCallEnd, "DPCT_CHECK_ERROR(", ")");
-        requestFeature(HelperFeatureEnum::Dpct_check_error_code, FuncNameBegin);
       }
     }
   }
@@ -1453,7 +1444,6 @@ private:
       if (C->getArg(ArgIndex)->IgnoreImplicit()->getStmtClass() !=
           Stmt::StmtClass::DeclRefExprClass)
         insertAroundStmt(C->getArg(ArgIndex), "(", ")");
-      requestFeature(HelperFeatureEnum::Image_image_matrix_to_pitched_data, C);
       emplaceTransformation(
           new InsertAfterStmt(C->getArg(ArgIndex), "->to_pitched_data()"));
     }

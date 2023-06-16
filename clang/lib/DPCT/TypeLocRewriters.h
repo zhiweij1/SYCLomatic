@@ -121,22 +121,6 @@ public:
   RulePriority Priority = RulePriority::Fallback;
 };
 
-class TypeLocRewriterFactoryWithFeatureRequest
-    : public TypeLocRewriterFactoryBase {
-  std::shared_ptr<TypeLocRewriterFactoryBase> Inner;
-  HelperFeatureEnum Feature;
-
-public:
-  TypeLocRewriterFactoryWithFeatureRequest(
-      HelperFeatureEnum Feature,
-      std::shared_ptr<TypeLocRewriterFactoryBase> InnerFactory)
-      : Inner(InnerFactory), Feature(Feature) {}
-  std::shared_ptr<TypeLocRewriter> create(const TypeLoc TL) const override {
-    requestFeature(Feature, TL.getBeginLoc());
-    return Inner->create(TL);
-  }
-};
-
 template <class RewriterTy, class... TAs>
 class TypeLocRewriterFactory : public TypeLocRewriterFactoryBase {
   std::tuple<TAs...> Initializer;

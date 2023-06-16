@@ -307,18 +307,14 @@ thrustOverloadFactory(const std::string &thrustFunc,
   unsigned Idx = static_cast<bool>(overload.policyState) ? 1 : 0;
   auto not_usm = createIfElseRewriterFactory(
       thrustFunc,
-      createFeatureRequestFactory(
-          HelperFeatureEnum::Memory_is_device_ptr,
           {thrustFunc,
            createCallExprRewriterFactory(
                thrustFunc,
                makeCallExprCreator(
-                   MapNames::getDpctNamespace() + "is_device_ptr", ARG(Idx)))}),
-      createFeatureRequestFactory(
-          HelperFeatureEnum::DplExtrasMemory_device_pointer_forward_decl,
+                   MapNames::getDpctNamespace() + "is_device_ptr", ARG(Idx)))},
           {thrustFunc, createDevicePolicyCallExprRewriterFactory(
                            thrustFunc, overload.migratedFunc, overload.argCnt,
-                           overload.ptrCnt, overload.policyState)}),
+                           overload.ptrCnt, overload.policyState)},
       {thrustFunc, createSequentialPolicyCallExprRewriterFactory(
                        thrustFunc, overload.migratedFunc, overload.argCnt,
                        overload.policyState)},
@@ -337,11 +333,9 @@ thrustOverloadFactory(const std::string &thrustFunc,
                  {thrustFunc, createSequentialPolicyCallExprRewriterFactory(
                                   thrustFunc, overload.migratedFunc,
                                   overload.argCnt, overload.policyState)}));
-  return createFeatureRequestFactory(
-      overload.feature,
-      createConditionalFactory(
+  return createConditionalFactory(
           makeCheckAnd(CheckIsPtr(Idx), makeCheckNot(checkIsUSM())),
-          {thrustFunc, not_usm}, std::move(usm)));
+          {thrustFunc, not_usm}, std::move(usm));
 }
 
 std::pair<std::string, std::shared_ptr<CallExprRewriterFactoryBase>>
