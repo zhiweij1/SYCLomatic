@@ -50,7 +50,7 @@ public:
   VISIT_NODE(DeclRefExpr)
   VISIT_NODE(GotoStmt)
   VISIT_NODE(LabelStmt)
-  VISIT_NODE(MemberExpr)
+  //VISIT_NODE(MemberExpr)
   VISIT_NODE(CXXDependentScopeMemberExpr)
   VISIT_NODE(CXXConstructExpr)
 #undef VISIT_NODE
@@ -127,6 +127,62 @@ private:
     }
     return nullptr;
   }
+
+  class TypeAnalyzer {
+  public:
+    /// Decide the input parameter type class
+    /// \return One of below 3 int values:
+    ///  1: can skip analysis
+    ///  0: need analysis
+    /// -1: unsupport to analyze
+    int getInputParamterTypeKind(clang::QualType QT) {
+      bool Res = getTypeInfo(QT.getTypePtr());
+      if (!Res)
+        return -1;
+      if (PointerLevel)
+        return 0;
+      return 1;
+    }
+
+  private:
+    int PointerLevel = 0;
+    bool getTypeInfo(const clang::Type *TypePtr) {
+      switch (TypePtr->getTypeClass()) {
+      case clang::Type::TypeClass::ConstantArray:
+        return getTypeInfo(dyn_cast<clang::ConstantArrayType>(TypePtr)
+                               ->getElementType()
+                               .getTypePtr());
+      case clang::Type::TypeClass::Pointer:
+        PointerLevel++;
+        if (PointerLevel >= 2)
+          return false;
+        return getTypeInfo(TypePtr->getPointeeType().getTypePtr());
+      case clang::Type::TypeClass::Elaborated:
+        return getTypeInfo(
+            dyn_cast<clang::ElaboratedType>(TypePtr)->desugar().getTypePtr());
+      case clang::Type::TypeClass::Typedef:
+        return getTypeInfo(dyn_cast<clang::TypedefType>(TypePtr)
+                               ->getDecl()
+                               ->getUnderlyingType()
+                               .getTypePtr());
+      case clang::Type::TypeClass::Record:
+        for (const auto &Field :
+             dyn_cast<clang::RecordType>(TypePtr)->getDecl()->fields()) {
+          if (!getTypeInfo(Field->getType().getTypePtr())) {
+            return false;
+          }
+        }
+        return true;
+      default:
+        if (TypePtr->isFundamentalType())
+          return true;
+        else
+          return false;
+      }
+    }
+  };
+
+  // int getInputParamterTypeKind(QualType QT);
 
   // TODO: Implement more accuracy Predecessors and Successors. Then below code
   //       can be used for checking.

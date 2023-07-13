@@ -12,6 +12,8 @@
 
 using namespace llvm;
 
+#define __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
+
 bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(const IfStmt *IS) {
   // No special process, treat as one block
   return true;
@@ -105,40 +107,17 @@ bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(const DeclRefExpr *DRE) {
   if (!PVD)
     return true;
 
-  /// \return One of below 3 int values:
-  ///  1: can skip analysis
-  ///  0: need analysis
-  /// -1: unsupport to analyze
-  std::function<int(QualType)> getInputParamterTypeKind =
-      [](QualType QT) -> int {
-    if (QT->isPointerType()) {
-      QualType PointeeQT = QT->getPointeeType();
-      if (PointeeQT.isConstQualified())
-        return 1;
-      if (PointeeQT->isFundamentalType())
-        return 0;
-      return -1;
-    }
-    if (QT->isFundamentalType()) {
-      return 1;
-    }
-    if (auto ET = dyn_cast<ElaboratedType>(QT.getTypePtr())) {
-      if (auto RT = dyn_cast<RecordType>(ET->desugar())) {
-        for (const auto &Field : RT->getDecl()->fields()) {
-          if (!Field->getType()->isFundamentalType()) {
-            return -1;
-          }
-        }
-        return 1;
-      }
-    }
-    return -1;
-  };
-
-  int ParamterTypeKind = getInputParamterTypeKind(PVD->getType());
+  TypeAnalyzer TA;
+  int ParamterTypeKind = TA.getInputParamterTypeKind(PVD->getType());
   if (ParamterTypeKind == 1) {
     return true;
   } else if (ParamterTypeKind == -1) {
+#ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
+    std::cout << "Return False case C: "
+              << PVD->getBeginLoc().printToString(
+                     DpctGlobalInfo::getSourceManager())
+              << std::endl;
+#endif
     return false;
   }
 
@@ -180,19 +159,19 @@ bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(const LabelStmt *LS) {
 }
 void clang::dpct::BarrierFenceSpaceAnalyzer::PostVisit(const LabelStmt *) {}
 
-bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(const MemberExpr *ME) {
-  if (ME->getType()->isPointerType() || ME->getType()->isArrayType()) {
-#ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
-    std::cout << "Return False case H: "
-              << ME->getBeginLoc().printToString(
-                     DpctGlobalInfo::getSourceManager())
-              << std::endl;
-#endif
-    return false;
-  }
-  return true;
-}
-void clang::dpct::BarrierFenceSpaceAnalyzer::PostVisit(const MemberExpr *) {}
+//bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(const MemberExpr *ME) {
+//  if (ME->getType()->isPointerType() || ME->getType()->isArrayType()) {
+//#ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
+//    std::cout << "Return False case H: "
+//              << ME->getBeginLoc().printToString(
+//                     DpctGlobalInfo::getSourceManager())
+//              << std::endl;
+//#endif
+//    return false;
+//  }
+//  return true;
+//}
+//void clang::dpct::BarrierFenceSpaceAnalyzer::PostVisit(const MemberExpr *) {}
 bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(
     const CXXDependentScopeMemberExpr *CDSME) {
 #ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
@@ -385,6 +364,9 @@ bool clang::dpct::BarrierFenceSpaceAnalyzer::canSetLocalFenceSpace(
   //      exit.
   if (!traverseFunction(FD)) {
     setFalseForThisFunctionDecl();
+#ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
+  std::cout << "Traverse fail, return false" << std::endl;
+#endif
     return false;
   }
 
@@ -715,10 +697,12 @@ bool clang::dpct::BarrierFenceSpaceAnalyzer::isSimpleDeviceFuntion(
     const FunctionDecl *FD) {
   using namespace ast_matchers;
   if (!isUserDefinedDecl(FD)) {
-    if (AllowedDeviceFunctions.count(FD->getNameInfo().getName().getAsString()))
+    if (AllowedDeviceFunctions.count(
+            FD->getNameInfo().getName().getAsString())) {
       return true;
-    else
+    } else {
       return false;
+    }
   }
   // "Simple" means: only fundamental value parameters && no file scope
   // __device__/__managed__ variable access/no further call
@@ -740,11 +724,14 @@ bool clang::dpct::BarrierFenceSpaceAnalyzer::isSimpleDeviceFuntion(
   if (!DREMatchedResults.empty()) {
     return false;
   }
-  auto CallMatcher = findAll(callExpr().bind("CALL"));
+  auto CallMatcher = findAll(callExpr(callee(functionDecl().bind("FD"))));
   auto CallMatchedResults =
       match(CallMatcher, *(FD->getBody()), DpctGlobalInfo::getContext());
-  if (!CallMatchedResults.empty()) {
-    return false;
+  for (const auto Result : CallMatchedResults) {
+    const FunctionDecl *FD = Result.getNodeAs<FunctionDecl>("FD");
+    if (!isSimpleDeviceFuntion(FD)) {
+      return false;
+    }
   }
   return true;
 }
@@ -770,6 +757,60 @@ bool clang::dpct::BarrierFenceSpaceAnalyzer::isAccessingMemory(
   return false;
 }
 
+/*
+int clang::dpct::BarrierFenceSpaceAnalyzer::getInputParamterTypeKind(
+    QualType QT) {
+  std::function<const RecordType *(QualType)> tryToGetRecordType =
+      [](QualType QT) -> const RecordType * {
+    if (auto ET = dyn_cast<ElaboratedType>(QT.getTypePtr())) {
+      if (auto TT = dyn_cast<TypedefType>(ET->desugar())) {
+        if (const RecordType *RT = dyn_cast_or_null<RecordType>(
+                TT->getDecl()->getUnderlyingType().getTypePtr())) {
+          return RT;
+        }
+      } else if (const RecordType *RT = dyn_cast<RecordType>(ET->desugar())) {
+        return RT;
+      }
+    }
+    return nullptr;
+  };
+
+  auto isScalarFundamental = [tryToGetRecordType](QualType QT) -> bool {
+    if (QT->isPointerType())
+      return false;
+    if (QT->isFundamentalType())
+      return true;
+    const RecordType *RT = tryToGetRecordType(QT);
+    if (RT) {
+      for (const auto &Field : RT->getDecl()->fields()) {
+        if (Field->getType()->isFundamentalType()) {
+          continue;
+        } else if (auto CAT = dyn_cast<ConstantArrayType>(Field->getType())) {
+          if (CAT->getElementType()->isFundamentalType()) {
+            continue;
+          }
+        }
+        return false;
+      }
+      return true;
+    }
+    return false;
+  };
+
+  if (QT->isPointerType()) {
+    QualType PointeeQT = QT->getPointeeType();
+    if (PointeeQT.isConstQualified())
+      return 1;
+    if (isScalarFundamental(PointeeQT))
+      return 0;
+    return -1;
+  }
+  if (isScalarFundamental(QT))
+    return 1;
+  return -1;
+}
+*/
+
 std::unordered_map<std::string, std::unordered_map<std::string, bool>>
     clang::dpct::BarrierFenceSpaceAnalyzer::CachedResults;
 
@@ -786,7 +827,21 @@ const std::unordered_set<std::string>
         "__expf",
         "fmaf",
         "abs",
-        "float2"};
+        "float2",
+        "__shfl_down_sync",
+        "__shfl_down",
+        "__shfl_up_sync",
+        "__shfl_up",
+        "__shfl_sync",
+        "__shfl",
+        "exp",
+        "sinf",
+        "cosf",
+        "atan2f",
+        "min",
+        "rsqrtf",
+        "max",
+        "tex2D"};
 
 // TODO: Implement more accuracy Predecessors and Successors. Then below code
 //       can be used for checking.
