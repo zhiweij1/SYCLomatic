@@ -490,6 +490,11 @@ public:
   }
   void setRTVersionValue(std::string Value) { RTVersionValue = Value; }
   std::string getRTVersionValue() { return RTVersionValue; }
+  void setMajorVersionValue(std::string Value) { MajorVersionValue = Value; }
+  std::string getMajorVersionValue() { return MajorVersionValue; }
+  void setMinorVersionValue(std::string Value) { MinorVersionValue = Value; }
+  std::string getMinorVersionValue() { return MinorVersionValue; }
+
   void setCCLVerValue(std::string Value) { CCLVerValue = Value; }
   std::string getCCLVerValue() { return CCLVerValue; }
   bool hasCUDASyntax() { return HeaderInsertedBitMap[HeaderType::HT_SYCL]; }
@@ -546,6 +551,7 @@ private:
 
   unsigned FirstIncludeOffset = 0;
   unsigned LastIncludeOffset = 0;
+  const unsigned FileBeginOffset = 0;
   bool HasInclusionDirective = false;
   std::vector<std::string> InsertedHeaders;
   std::vector<std::string> InsertedHeadersCUDA;
@@ -556,6 +562,8 @@ private:
   std::vector<std::pair<unsigned int, unsigned int>> ExternCRanges;
   std::vector<RnnBackwardFuncInfo> RBFuncInfo;
   std::string RTVersionValue = "";
+  std::string MajorVersionValue = "";
+  std::string MinorVersionValue = "";
   std::string CCLVerValue = "";
 };
 template <> inline GlobalMap<MemVarInfo> &DpctFileInfo::getMap() {
