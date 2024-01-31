@@ -762,6 +762,8 @@ public:
   static unsigned int getKCIndentWidth();
   static UsmLevel getUsmLevel() { return UsmLvl; }
   static void setUsmLevel(UsmLevel UL) { UsmLvl = UL; }
+  static BuildScript getBuildScript() { return BuildScriptVal; }
+  static void setBuildScript(BuildScript BSVal) { BuildScriptVal = BSVal; }
   static clang::CudaVersion getSDKVersion() { return SDKVersion; }
   static void setSDKVersion(clang::CudaVersion V) { SDKVersion = V; }
   static bool isIncMigration() { return IsIncMigration; }
@@ -825,15 +827,11 @@ public:
   static void setGenBuildScriptEnabled(bool Enable = true) {
     GenBuildScript = Enable;
   }
-  static bool IsMigrateCmakeScriptEnabled() { return MigrateCmakeScript; }
-  static void setMigrateCmakeScriptEnabled(bool Enable = true) {
-    MigrateCmakeScript = Enable;
+  static bool IsMigrateBuildScriptOnlyEnabled() {
+    return MigrateBuildScriptOnly;
   }
-  static bool IsMigrateCmakeScriptOnlyEnabled() {
-    return MigrateCmakeScriptOnly;
-  }
-  static void setMigrateCmakeScriptOnlyEnabled(bool Enable = true) {
-    MigrateCmakeScriptOnly = Enable;
+  static void setMigrateBuildScriptOnlyEnabled(bool Enable = true) {
+    MigrateBuildScriptOnly = Enable;
   }
   static bool isCommentsEnabled() { return EnableComments; }
   static void setCommentsEnabled(bool Enable = true) {
@@ -1252,6 +1250,10 @@ public:
   insertFile(const clang::tooling::UnifiedPath &FilePath) {
     return insertObject(FileMap, FilePath);
   }
+  std::shared_ptr<DpctFileInfo>
+  findFile(const clang::tooling::UnifiedPath &FilePath) {
+    return findObject(FileMap, FilePath);
+  }
   std::shared_ptr<DpctFileInfo> getMainFile() const { return MainFile; }
   void setMainFile(std::shared_ptr<DpctFileInfo> Main) { MainFile = Main; }
   void recordIncludingRelationship(
@@ -1334,6 +1336,7 @@ public:
   static std::set<std::string> &getVarUsedByRuntimeSymbolAPISet() {
     return VarUsedByRuntimeSymbolAPISet;
   }
+  static IncludeMapSetTy &getIncludeMapSet() { return IncludeMapSet; }
   static void setNeedParenAPI(const std::string &Name) {
     NeedParenAPISet.insert(Name);
   }
@@ -1424,6 +1427,7 @@ private:
   static clang::tooling::UnifiedPath CudaPath;
   static std::string RuleFile;
   static UsmLevel UsmLvl;
+  static BuildScript BuildScriptVal;
   static clang::CudaVersion SDKVersion;
   static bool NeedDpctDeviceExt;
   static bool IsIncMigration;
@@ -1436,8 +1440,7 @@ private:
   static bool EnableCodePin;
   static bool IsMLKHeaderUsed;
   static bool GenBuildScript;
-  static bool MigrateCmakeScript;
-  static bool MigrateCmakeScriptOnly;
+  static bool MigrateBuildScriptOnly;
   static bool EnableComments;
   static std::set<ExplicitNamespace> ExplicitNamespaceSet;
 
@@ -1548,6 +1551,7 @@ private:
   static std::map<std::shared_ptr<TextModification>, bool>
       ConstantReplProcessedFlagMap;
   static std::set<std::string> VarUsedByRuntimeSymbolAPISet;
+  static IncludeMapSetTy IncludeMapSet;
   static std::unordered_set<std::string> NeedParenAPISet;
 };
 
