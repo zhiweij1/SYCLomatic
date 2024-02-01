@@ -4281,7 +4281,7 @@ DeviceFunctionDecl::DeviceFunctionDecl(
       FuncInfo(getFuncInfo(FD)) {
   if (!FuncInfo) {
     FuncInfo = std::make_shared<DeviceFunctionInfo>(
-        FD->param_size(), NonDefaultParamNum, getFunctionName(FD));
+        FD->param_size(), NonDefaultParamNum, getFunctionName(FD), FD);
   }
   if (!FilePath.getCanonicalPath().empty()) {
     SourceProcessType FileType = GetSourceFileType(FilePath);
@@ -4420,7 +4420,7 @@ void DeviceFunctionDecl::LinkDecl(const FunctionDecl *FD, DeclList &List,
     } else {
       Info = std::make_shared<DeviceFunctionInfo>(
           FD->param_size(), FD->getMostRecentDecl()->getMinRequiredArguments(),
-          getFunctionName(FD));
+          getFunctionName(FD), FD);
       FuncInfo = Info;
     }
     return;
@@ -4745,12 +4745,14 @@ void DeviceFunctionDeclInModule::emplaceReplacement() {
 ///// class DeviceFunctionInfo /////
 DeviceFunctionInfo::DeviceFunctionInfo(size_t ParamsNum,
                                        size_t NonDefaultParamNum,
-                                       std::string FunctionName)
+                                       std::string FunctionName,
+                                       const clang::FunctionDecl *FD)
     : ParamsNum(ParamsNum), NonDefaultParamNum(NonDefaultParamNum),
       IsBuilt(false),
       TextureObjectList(ParamsNum, std::shared_ptr<TextureObjectInfo>()),
       FunctionName(FunctionName), IsLambda(false) {
   ParametersProps.resize(ParamsNum);
+  // TODO: collect BarrierFenceSpaceAnalysisInfo from FD
 }
 std::shared_ptr<CallFunctionExpr>
 DeviceFunctionInfo::findCallee(const CallExpr *C) {

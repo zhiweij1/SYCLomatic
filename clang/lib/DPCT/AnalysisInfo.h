@@ -2343,6 +2343,15 @@ public:
   template <class IteratorRange>
   static std::shared_ptr<DeviceFunctionInfo>
   LinkDeclRange(IteratorRange &&Range, const std::string &FunctionName) {
+    // Currently only support to analyze FunctionDecl only.
+    const FunctionDecl *FD = nullptr;
+    if constexpr (std::is_same<decltype(Range.begin()),
+                               FunctionDecl::redecl_iterator>::value) {
+      for (const auto D : Range) {
+        if (D->hasBody())
+          FD = D;
+      }
+    }
     std::shared_ptr<DeviceFunctionInfo> Info;
     DeclList List;
     LinkDeclRange(std::move(Range), List, Info);
@@ -2350,7 +2359,7 @@ public:
       return Info;
     if (!Info)
       Info = std::make_shared<DeviceFunctionInfo>(
-          List[0]->ParamsNum, List[0]->NonDefaultParamNum, FunctionName);
+          List[0]->ParamsNum, List[0]->NonDefaultParamNum, FunctionName, FD);
     for (auto &D : List)
       D->setFuncInfo(Info);
     return Info;
@@ -2444,14 +2453,16 @@ public:
 
 // device function info includes parameters num, memory variable and call
 // expression in the function.
-class DeviceFunctionInfo {
+class DeviceFunctionInfo
+    : public std::enable_shared_from_this<DeviceFunctionInfo> {
   struct ParameterProps {
     bool IsReferenced = false;
   };
+  struct BarrierFenceSpaceAnalysisInfo {};
 
 public:
   DeviceFunctionInfo(size_t ParamsNum, size_t NonDefaultParamNum,
-                     std::string FunctionName);
+                     std::string FunctionName, const clang::FunctionDecl *FD);
 
   bool ConstructGraphVisited = false;
   unsigned int KernelCallBlockDim = 1;
@@ -2459,10 +2470,22 @@ public:
   std::shared_ptr<CallFunctionExpr> findCallee(const CallExpr *C);
   template <class CallT>
   inline std::shared_ptr<CallFunctionExpr> addCallee(const CallT *C) {
+    // Update CallExprMap
     auto CallLocInfo = DpctGlobalInfo::getLocInfo(C);
     auto Call =
         insertObject(CallExprMap, CallLocInfo.second, CallLocInfo.first, C);
     Call->buildCallExprInfo(C);
+
+    // Update CallersSet
+    // Currently, only support CallExpr & FunctionDecl only
+    if constexpr (std::is_same<CallT, CallExpr>::value) {
+      if (C->getDirectCallee()) {
+        if (auto ChildDFI =
+                DeviceFunctionDecl::LinkRedecls(C->getDirectCallee())) {
+          ChildDFI->getParentDFIs().insert(weak_from_this());
+        }
+      }
+    }
     return Call;
   }
   void addVar(std::shared_ptr<MemVarInfo> Var) { VarMap.addVar(Var); }
@@ -2526,6 +2549,11 @@ public:
   size_t ParamsNum;
   size_t NonDefaultParamNum;
   GlobalMap<CallFunctionExpr> &getCallExprMap() { return CallExprMap; }
+  std::set<std::weak_ptr<DeviceFunctionInfo>,
+           std::owner_less<std::weak_ptr<DeviceFunctionInfo>>> &
+  getParentDFIs() {
+    return ParentDFIs;
+  }
   void addSubGroupSizeRequest(unsigned int Size, SourceLocation Loc,
                               std::string APIName, std::string VarName = "");
   std::vector<std::tuple<unsigned int, clang::tooling::UnifiedPath,
@@ -2555,6 +2583,9 @@ private:
                          unsigned int, std::string, std::string>>
       RequiredSubGroupSize;
   GlobalMap<CallFunctionExpr> CallExprMap;
+  std::set<std::weak_ptr<DeviceFunctionInfo>,
+           std::owner_less<std::weak_ptr<DeviceFunctionInfo>>>
+      ParentDFIs;
   MemVarMap VarMap;
 
   std::shared_ptr<StructureTextureObjectInfo> BaseObjectTexture;
