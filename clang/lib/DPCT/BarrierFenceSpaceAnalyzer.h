@@ -38,8 +38,7 @@ struct BarrierFenceSpaceAnalyzerResult {
       : CanUseLocalBarrier(CanUseLocalBarrier),
         CanUseLocalBarrierWithCondition(CanUseLocalBarrierWithCondition),
         MayDependOn1DKernel(MayDependOn1DKernel),
-        GlobalFunctionName(GlobalFunctionName),
-        Condition(Condition) {}
+        GlobalFunctionName(GlobalFunctionName), Condition(Condition) {}
   bool CanUseLocalBarrier = false;
   bool CanUseLocalBarrierWithCondition = false;
   bool MayDependOn1DKernel = false;
@@ -56,12 +55,6 @@ struct SyncCallInfo {
   Ranges Successors;
 };
 
-class BarrierFenceSpaceAnalyzer
-    : public RecursiveASTVisitor<BarrierFenceSpaceAnalyzer> {
-public:
-  bool shouldVisitImplicitCode() const { return true; }
-  bool shouldTraversePostOrder() const { return false; }
-
 #define VISIT_NODE(CLASS)                                                      \
   bool Visit(const CLASS *Node);                                               \
   void PostVisit(const CLASS *FS);                                             \
@@ -75,31 +68,22 @@ public:
     return true;                                                               \
   }
 
-  VISIT_NODE(ForStmt)
-  VISIT_NODE(DoStmt)
-  VISIT_NODE(WhileStmt)
-  VISIT_NODE(SwitchStmt)
-  VISIT_NODE(IfStmt)
-  VISIT_NODE(CallExpr)
-  VISIT_NODE(DeclRefExpr)
+class BarrierFenceSpaceAnalyzer
+    : public RecursiveASTVisitor<BarrierFenceSpaceAnalyzer> {
+public:
+  bool shouldVisitImplicitCode() const { return true; }
+  bool shouldTraversePostOrder() const { return false; }
+
   VISIT_NODE(GotoStmt)
   VISIT_NODE(LabelStmt)
   VISIT_NODE(MemberExpr)
   VISIT_NODE(CXXDependentScopeMemberExpr)
-  VISIT_NODE(CXXConstructExpr)
-#undef VISIT_NODE
 
-public:
-  BarrierFenceSpaceAnalyzerResult analyze(const CallExpr *CE,
-                                          bool SkipCacheInAnalyzer = false);
+  virtual BarrierFenceSpaceAnalyzerResult
+  analyze(const CallExpr *CE, bool SkipCacheInAnalyzer = false) = 0;
 
-private:
+protected:
   enum class AccessMode : int { Read = 0, Write, ReadWrite };
-  std::pair<std::set<const DeclRefExpr *>, std::set<const VarDecl *>>
-  isAssignedToAnotherDREOrVD(const DeclRefExpr *);
-  bool isAccessingMemory(const DeclRefExpr *);
-  AccessMode getAccessKind(const DeclRefExpr *);
-
   struct DREInfo {
     DREInfo(const DeclRefExpr *DRE, SourceLocation SL, AccessMode AM)
         : DRE(DRE), SL(SL), AM(AM) {}
@@ -109,56 +93,26 @@ private:
     bool operator<(const DREInfo &Other) const { return DRE < Other.DRE; }
   };
 
-  std::tuple<bool /*CanUseLocalBarrier*/,
-             bool /*CanUseLocalBarrierWithCondition*/,
-             std::string /*Condition*/>
+  virtual std::pair<std::set<const DeclRefExpr *>, std::set<const VarDecl *>>
+  isAssignedToAnotherDREOrVD(const DeclRefExpr *) = 0;
+  virtual bool isAccessingMemory(const DeclRefExpr *) = 0;
+  virtual AccessMode getAccessKind(const DeclRefExpr *) = 0;
+  virtual std::tuple<bool /*CanUseLocalBarrier*/,
+                     bool /*CanUseLocalBarrierWithCondition*/,
+                     std::string /*Condition*/>
   isSafeToUseLocalBarrier(
       const std::map<const ParmVarDecl *, std::set<DREInfo>> &DefDREInfoMap,
-      const SyncCallInfo &SCI);
+      const SyncCallInfo &SCI) = 0;
+  virtual bool hasOverlappingAccessAmongWorkItems(int KernelDim,
+                                                  const DeclRefExpr *DRE) = 0;
+  virtual void constructDefUseMap() = 0;
+  virtual void simplifyMap(
+      std::map<const ParmVarDecl *, std::set<DREInfo>> &DefDREInfoMap) = 0;
+  virtual std::string isAnalyzableWriteInLoop(
+      const std::set<const DeclRefExpr *> &WriteInLoopDRESet) = 0;
+
   bool containsMacro(const SourceLocation &SL, const SyncCallInfo &SCI);
-  bool hasOverlappingAccessAmongWorkItems(int KernelDim,
-                                          const DeclRefExpr *DRE);
-  std::vector<std::pair<const CallExpr *, SyncCallInfo>> SyncCallsVec;
-  std::deque<SourceRange> LoopRange;
-  int KernelDim = 3; // 3 or 1
-  int KernelCallBlockDim = 3; // 3 or 1
-  const FunctionDecl *FD = nullptr;
-  std::string GlobalFunctionName;
-
-  std::unordered_map<const ParmVarDecl *, std::set<const DeclRefExpr *>>
-      DefUseMap;
-  std::string CELoc;
-  std::string FDLoc;
-  void constructDefUseMap();
-  void
-  simplifyMap(std::map<const ParmVarDecl *, std::set<DREInfo>> &DefDREInfoMap);
-
-  /// (FD location, (Call location, result))
-  static std::unordered_map<
-      std::string,
-      std::unordered_map<std::string, BarrierFenceSpaceAnalyzerResult>>
-      CachedResults;
-  bool SkipCacheInAnalyzer = false;
-  bool MayDependOn1DKernel = false;
-
   bool isInRanges(SourceLocation SL, Ranges Ranges);
-  std::string isAnalyzableWriteInLoop(
-      const std::set<const DeclRefExpr *> &WriteInLoopDRESet);
-
-  std::set<const Expr *> DeviceFunctionCallArgs;
-
-  bool IsDifferenceBetweenThreadIdxXAndIndexConstant = false;
-
-  // This map contains pairs meet below pattern:
-  // loop {
-  //   ...
-  //   DRE[idx] = ...;
-  //   ...
-  //   idx += step;
-  //   ...
-  // }
-  std::map<const DeclRefExpr*, std::string> DREIncStepMap;
-
   class TypeAnalyzer {
   public:
     enum class ParamterTypeKind : int {
@@ -227,6 +181,70 @@ private:
     }
   };
 };
+
+class IntraproceduralAnalyzer : public BarrierFenceSpaceAnalyzer {};
+class InterproceduralAnalyzer : public BarrierFenceSpaceAnalyzer {
+public:
+  BarrierFenceSpaceAnalyzerResult
+  analyze(const CallExpr *CE, bool SkipCacheInAnalyzer = false) override;
+
+  VISIT_NODE(ForStmt)
+  VISIT_NODE(DoStmt)
+  VISIT_NODE(WhileStmt)
+  VISIT_NODE(CallExpr)
+  VISIT_NODE(DeclRefExpr)
+  VISIT_NODE(CXXConstructExpr)
+
+private:
+  std::pair<std::set<const DeclRefExpr *>, std::set<const VarDecl *>>
+  isAssignedToAnotherDREOrVD(const DeclRefExpr *) override;
+  bool isAccessingMemory(const DeclRefExpr *) override;
+  AccessMode getAccessKind(const DeclRefExpr *) override;
+  std::tuple<bool /*CanUseLocalBarrier*/,
+             bool /*CanUseLocalBarrierWithCondition*/,
+             std::string /*Condition*/>
+  isSafeToUseLocalBarrier(
+      const std::map<const ParmVarDecl *, std::set<DREInfo>> &DefDREInfoMap,
+      const SyncCallInfo &SCI) override;
+  bool hasOverlappingAccessAmongWorkItems(int KernelDim,
+                                          const DeclRefExpr *DRE) override;
+  void constructDefUseMap() override;
+  void simplifyMap(
+      std::map<const ParmVarDecl *, std::set<DREInfo>> &DefDREInfoMap) override;
+  std::string isAnalyzableWriteInLoop(
+      const std::set<const DeclRefExpr *> &WriteInLoopDRESet) override;
+
+  std::vector<std::pair<const CallExpr *, SyncCallInfo>> SyncCallsVec;
+  std::deque<SourceRange> LoopRange;
+  int KernelDim = 3;          // 3 or 1
+  int KernelCallBlockDim = 3; // 3 or 1
+  const FunctionDecl *FD = nullptr;
+  std::string GlobalFunctionName;
+  std::unordered_map<const ParmVarDecl *, std::set<const DeclRefExpr *>>
+      DefUseMap;
+  std::string CELoc;
+  std::string FDLoc;
+  /// (FD location, (Call location, result))
+  static std::unordered_map<
+      std::string,
+      std::unordered_map<std::string, BarrierFenceSpaceAnalyzerResult>>
+      CachedResults;
+  bool SkipCacheInAnalyzer = false;
+  bool MayDependOn1DKernel = false;
+  std::set<const Expr *> DeviceFunctionCallArgs;
+  bool IsDifferenceBetweenThreadIdxXAndIndexConstant = false;
+  // This map contains pairs meet below pattern:
+  // loop {
+  //   ...
+  //   DRE[idx] = ...;
+  //   ...
+  //   idx += step;
+  //   ...
+  // }
+  std::map<const DeclRefExpr *, std::string> DREIncStepMap;
+};
+#undef VISIT_NODE
+
 } // namespace dpct
 } // namespace clang
 

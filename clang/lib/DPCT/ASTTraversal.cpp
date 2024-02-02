@@ -12375,7 +12375,7 @@ void SyncThreadsMigrationRule::runRule(const MatchFinder::MatchResult &Result) {
   std::string FuncName =
       CE->getDirectCallee()->getNameInfo().getName().getAsString();
   if (FuncName == "__syncthreads") {
-    BarrierFenceSpaceAnalyzer A;
+    InterproceduralAnalyzer A;
     const FunctionTemplateDecl *FTD = FD->getDescribedFunctionTemplate();
     if (FTD) {
       if (FTD->specializations().empty()) {

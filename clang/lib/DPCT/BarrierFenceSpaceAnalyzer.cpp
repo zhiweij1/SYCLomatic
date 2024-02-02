@@ -13,44 +13,28 @@
 
 using namespace llvm;
 
-bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(const IfStmt *IS) {
-  // No special process, treat as one block
-  return true;
-}
-void clang::dpct::BarrierFenceSpaceAnalyzer::PostVisit(const IfStmt *IS) {
-  // No special process, treat as one block
-}
-bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(const SwitchStmt *SS) {
-  // No special process, treat as one block
-  return true;
-}
-void clang::dpct::BarrierFenceSpaceAnalyzer::PostVisit(const SwitchStmt *SS) {
-  // No special process, treat as one block
-}
-
-bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(const ForStmt *FS) {
+bool clang::dpct::InterproceduralAnalyzer::Visit(const ForStmt *FS) {
   LoopRange.push_back(FS->getSourceRange());
   return true;
 }
-void clang::dpct::BarrierFenceSpaceAnalyzer::PostVisit(
-    const clang::ForStmt *FS) {
+void clang::dpct::InterproceduralAnalyzer::PostVisit(const clang::ForStmt *FS) {
   LoopRange.pop_back();
 }
-bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(const DoStmt *DS) {
+bool clang::dpct::InterproceduralAnalyzer::Visit(const DoStmt *DS) {
   LoopRange.push_back(DS->getSourceRange());
   return true;
 }
-void clang::dpct::BarrierFenceSpaceAnalyzer::PostVisit(const DoStmt *DS) {
+void clang::dpct::InterproceduralAnalyzer::PostVisit(const DoStmt *DS) {
   LoopRange.pop_back();
 }
-bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(const WhileStmt *WS) {
+bool clang::dpct::InterproceduralAnalyzer::Visit(const WhileStmt *WS) {
   LoopRange.push_back(WS->getSourceRange());
   return true;
 }
-void clang::dpct::BarrierFenceSpaceAnalyzer::PostVisit(const WhileStmt *WS) {
+void clang::dpct::InterproceduralAnalyzer::PostVisit(const WhileStmt *WS) {
   LoopRange.pop_back();
 }
-bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(const CallExpr *CE) {
+bool clang::dpct::InterproceduralAnalyzer::Visit(const CallExpr *CE) {
   const FunctionDecl *FuncDecl = CE->getDirectCallee();
   if (!FuncDecl)
     return true;
@@ -73,9 +57,9 @@ bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(const CallExpr *CE) {
   }
   return true;
 }
-void clang::dpct::BarrierFenceSpaceAnalyzer::PostVisit(const CallExpr *) {}
+void clang::dpct::InterproceduralAnalyzer::PostVisit(const CallExpr *) {}
 
-bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(const DeclRefExpr *DRE) {
+bool clang::dpct::InterproceduralAnalyzer::Visit(const DeclRefExpr *DRE) {
   // Collect all DREs and its Decl
   const auto PVD = dyn_cast<ParmVarDecl>(DRE->getDecl());
   if (!PVD)
@@ -107,7 +91,7 @@ bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(const DeclRefExpr *DRE) {
   }
   return true;
 }
-void clang::dpct::BarrierFenceSpaceAnalyzer::PostVisit(const DeclRefExpr *) {}
+void clang::dpct::InterproceduralAnalyzer::PostVisit(const DeclRefExpr *) {}
 
 bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(const GotoStmt *GS) {
   // We will further refine it if meet real request.
@@ -161,14 +145,13 @@ bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(
 void clang::dpct::BarrierFenceSpaceAnalyzer::PostVisit(
     const CXXDependentScopeMemberExpr *) {}
 
-bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(
-    const CXXConstructExpr *CCE) {
+bool clang::dpct::InterproceduralAnalyzer::Visit(const CXXConstructExpr *CCE) {
   for (const auto &Arg : CCE->arguments())
     DeviceFunctionCallArgs.insert(Arg);
   return true;
 }
-void clang::dpct::BarrierFenceSpaceAnalyzer::PostVisit(
-    const CXXConstructExpr *) {}
+void clang::dpct::InterproceduralAnalyzer::PostVisit(const CXXConstructExpr *) {
+}
 
 template <class TargetTy, class NodeTy>
 static inline const TargetTy *findAncestorInFunctionScope(
@@ -202,7 +185,7 @@ static inline const TargetTy *findAncestorInFunctionScope(
 /// @return Assigned DREs or VDs
 std::pair<std::set<const clang::DeclRefExpr *>,
           std::set<const clang::VarDecl *>>
-clang::dpct::BarrierFenceSpaceAnalyzer::isAssignedToAnotherDREOrVD(
+clang::dpct::InterproceduralAnalyzer::isAssignedToAnotherDREOrVD(
     const DeclRefExpr *CurrentDRE) {
   std::set<const DeclRefExpr *> ResultDRESet;
   std::set<const VarDecl *> ResultVDSet;
@@ -246,7 +229,7 @@ clang::dpct::BarrierFenceSpaceAnalyzer::isAssignedToAnotherDREOrVD(
 }
 
 clang::dpct::BarrierFenceSpaceAnalyzer::AccessMode
-clang::dpct::BarrierFenceSpaceAnalyzer::getAccessKind(
+clang::dpct::InterproceduralAnalyzer::getAccessKind(
     const DeclRefExpr *CurrentDRE) {
   bool FoundDeref = false;
   bool FoundBO = false;
@@ -518,7 +501,7 @@ bool isMeetAnalyisPrerequirements(const CallExpr *CE, const FunctionDecl *&FD) {
 }
 } // namespace
 
-void clang::dpct::BarrierFenceSpaceAnalyzer::constructDefUseMap() {
+void clang::dpct::InterproceduralAnalyzer::constructDefUseMap() {
   auto getSize =
       [](const std::unordered_map<const ParmVarDecl *,
                                   std::set<const DeclRefExpr *>> &DefUseMap)
@@ -591,7 +574,7 @@ void clang::dpct::BarrierFenceSpaceAnalyzer::constructDefUseMap() {
 #endif
 }
 
-void clang::dpct::BarrierFenceSpaceAnalyzer::simplifyMap(
+void clang::dpct::InterproceduralAnalyzer::simplifyMap(
     std::map<const ParmVarDecl *, std::set<DREInfo>> &DefDREInfoMap) {
   std::map<const ParmVarDecl *,
            std::set<std::pair<const DeclRefExpr *, AccessMode>>>
@@ -634,8 +617,8 @@ void clang::dpct::BarrierFenceSpaceAnalyzer::simplifyMap(
 }
 
 clang::dpct::BarrierFenceSpaceAnalyzerResult
-clang::dpct::BarrierFenceSpaceAnalyzer::analyze(const CallExpr *CE,
-                                                bool SkipCacheInAnalyzer) {
+clang::dpct::InterproceduralAnalyzer::analyze(const CallExpr *CE,
+                                              bool SkipCacheInAnalyzer) {
   // Check prerequirements
   const FunctionDecl *FD = nullptr;
   if (!isMeetAnalyisPrerequirements(CE, FD))
@@ -751,7 +734,7 @@ clang::dpct::BarrierFenceSpaceAnalyzer::analyze(const CallExpr *CE,
                                          GlobalFunctionName);
 }
 
-bool clang::dpct::BarrierFenceSpaceAnalyzer::hasOverlappingAccessAmongWorkItems(
+bool clang::dpct::InterproceduralAnalyzer::hasOverlappingAccessAmongWorkItems(
     int KernelCallBlockDim, const DeclRefExpr *DRE) {
   using namespace ast_matchers;
   if (KernelCallBlockDim != 1) {
@@ -790,7 +773,7 @@ bool clang::dpct::BarrierFenceSpaceAnalyzer::containsMacro(
   return false;
 }
 
-bool clang::dpct::BarrierFenceSpaceAnalyzer::isAccessingMemory(
+bool clang::dpct::InterproceduralAnalyzer::isAccessingMemory(
     const DeclRefExpr *DRE) {
   auto &Context = DpctGlobalInfo::getContext();
   DynTypedNode Current = DynTypedNode::create(*DRE);
@@ -811,8 +794,8 @@ bool clang::dpct::BarrierFenceSpaceAnalyzer::isAccessingMemory(
   return false;
 }
 
-bool clang::dpct::BarrierFenceSpaceAnalyzer::isInRanges(
-    SourceLocation SL, Ranges Ranges) {
+bool clang::dpct::BarrierFenceSpaceAnalyzer::isInRanges(SourceLocation SL,
+                                                        Ranges Ranges) {
   auto &SM = DpctGlobalInfo::getSourceManager();
   for (auto &Range : Ranges) {
     if (SM.getFileOffset(Range.getBegin()) < SM.getFileOffset(SL) &&
@@ -829,9 +812,9 @@ bool clang::dpct::BarrierFenceSpaceAnalyzer::isInRanges(
 // for () {
 //   ...
 //   mem[idx] = var;
-//   ... 
+//   ...
 // }
-std::string clang::dpct::BarrierFenceSpaceAnalyzer::isAnalyzableWriteInLoop(
+std::string clang::dpct::InterproceduralAnalyzer::isAnalyzableWriteInLoop(
     const std::set<const DeclRefExpr *> &WriteInLoopDRESet) {
   if (WriteInLoopDRESet.size() > 1) {
 #ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
@@ -866,7 +849,7 @@ std::string clang::dpct::BarrierFenceSpaceAnalyzer::isAnalyzableWriteInLoop(
 /// @return Is safe or not, and the condition string (if needed)
 std::tuple<bool /*CanUseLocalBarrier*/,
            bool /*CanUseLocalBarrierWithCondition*/, std::string /*Condition*/>
-clang::dpct::BarrierFenceSpaceAnalyzer::isSafeToUseLocalBarrier(
+clang::dpct::InterproceduralAnalyzer::isSafeToUseLocalBarrier(
     const std::map<const ParmVarDecl *, std::set<DREInfo>> &DefDREInfoMap,
     const SyncCallInfo &SCI) {
 #ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
@@ -935,8 +918,8 @@ clang::dpct::BarrierFenceSpaceAnalyzer::isSafeToUseLocalBarrier(
     // should equal to `local_id(2) + C`.
     // Next, we need to make sure there is no overlap among iterations.
     // The memory range in an iteration is `local_range(2)`, then if
-    // `s > local_range(2)`, the next iteration start point is larger than previous
-    // end, so there is no overlap.
+    // `s > local_range(2)`, the next iteration start point is larger than
+    // previous end, so there is no overlap.
 
     std::string RHS;
     if (ConditionSet.size() == 1) {
@@ -965,4 +948,4 @@ clang::dpct::BarrierFenceSpaceAnalyzer::isSafeToUseLocalBarrier(
 std::unordered_map<
     std::string, std::unordered_map<
                      std::string, clang::dpct::BarrierFenceSpaceAnalyzerResult>>
-    clang::dpct::BarrierFenceSpaceAnalyzer::CachedResults;
+    clang::dpct::InterproceduralAnalyzer::CachedResults;
