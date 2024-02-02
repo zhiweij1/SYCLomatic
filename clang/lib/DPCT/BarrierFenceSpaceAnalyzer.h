@@ -9,7 +9,6 @@
 #ifndef DPCT_BARRIER_FENCE_SPACE_ANALYZER_H
 #define DPCT_BARRIER_FENCE_SPACE_ANALYZER_H
 
-#include "AnalysisInfo.h"
 #include "Utility.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include <map>
@@ -18,6 +17,13 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+template <> struct std::hash<clang::SourceRange> {
+  std::size_t operator()(const clang::SourceRange &SR) const noexcept {
+    return llvm::hash_combine(SR.getBegin().getRawEncoding(),
+                              SR.getEnd().getRawEncoding());
+  }
+};
 
 namespace clang {
 namespace dpct {
@@ -39,6 +45,15 @@ struct BarrierFenceSpaceAnalyzerResult {
   bool MayDependOn1DKernel = false;
   std::string GlobalFunctionName;
   std::string Condition;
+};
+
+using Ranges = std::unordered_set<SourceRange>;
+struct SyncCallInfo {
+  SyncCallInfo() {}
+  SyncCallInfo(Ranges Predecessors, Ranges Successors)
+      : Predecessors(Predecessors), Successors(Successors){};
+  Ranges Predecessors;
+  Ranges Successors;
 };
 
 class BarrierFenceSpaceAnalyzer
@@ -84,14 +99,6 @@ private:
   isAssignedToAnotherDREOrVD(const DeclRefExpr *);
   bool isAccessingMemory(const DeclRefExpr *);
   AccessMode getAccessKind(const DeclRefExpr *);
-  //using Ranges = std::vector<SourceRange>;
-  //struct SyncCallInfo {
-  //  SyncCallInfo() {}
-  //  SyncCallInfo(Ranges Predecessors, Ranges Successors)
-  //      : Predecessors(Predecessors), Successors(Successors){};
-  //  Ranges Predecessors;
-  //  Ranges Successors;
-  //};
 
   struct DREInfo {
     DREInfo(const DeclRefExpr *DRE, SourceLocation SL, AccessMode AM)
@@ -134,26 +141,6 @@ private:
   bool SkipCacheInAnalyzer = false;
   bool MayDependOn1DKernel = false;
 
-  template <class TargetTy, class NodeTy>
-  static inline const TargetTy *findAncestorInFunctionScope(
-      const NodeTy *N, const FunctionDecl *Scope,
-      const std::function<const void *(const DynTypedNode &,
-                                       const DynTypedNode &)> &Operation) {
-    auto &Context = DpctGlobalInfo::getContext();
-    DynTypedNode Current = DynTypedNode::create(*N);
-    DynTypedNodeList Parents = Context.getParents(Current);
-    while (!Parents.empty()) {
-      if (Parents[0].get<FunctionDecl>() &&
-          Parents[0].get<FunctionDecl>() == Scope)
-        break;
-      if (const void *Node = Operation(Parents[0], Current)) {
-        return reinterpret_cast<const TargetTy *>(Node);
-      }
-      Current = Parents[0];
-      Parents = Context.getParents(Current);
-    }
-    return nullptr;
-  }
   bool isInRanges(SourceLocation SL, Ranges Ranges);
   std::string isAnalyzableWriteInLoop(
       const std::set<const DeclRefExpr *> &WriteInLoopDRESet);

@@ -9,6 +9,7 @@
 #ifndef DPCT_ANALYSIS_INFO_H
 #define DPCT_ANALYSIS_INFO_H
 
+#include "BarrierFenceSpaceAnalyzer.h"
 #include "Error.h"
 #include "ExprAnalysis.h"
 #include "ExtReplacements.h"
@@ -40,13 +41,6 @@
 
 llvm::StringRef getReplacedName(const clang::NamedDecl *D);
 void setGetReplacedNamePtr(llvm::StringRef (*Ptr)(const clang::NamedDecl *D));
-
-template <> struct std::hash<clang::SourceRange> {
-  std::size_t operator()(const clang::SourceRange &SR) const noexcept {
-    return llvm::hash_combine(SR.getBegin().getRawEncoding(),
-                              SR.getEnd().getRawEncoding());
-  }
-};
 
 namespace clang {
 namespace dpct {
@@ -2458,15 +2452,6 @@ public:
   void emplaceReplacement() override;
 };
 
-using Ranges = std::unordered_set<SourceRange>;
-struct SyncCallInfo {
-  SyncCallInfo() {}
-  SyncCallInfo(Ranges Predecessors, Ranges Successors)
-      : Predecessors(Predecessors), Successors(Successors){};
-  Ranges Predecessors;
-  Ranges Successors;
-};
-
 // device function info includes parameters num, memory variable and call
 // expression in the function.
 class DeviceFunctionInfo
@@ -2527,7 +2512,7 @@ public:
     // will affect its migration.
 
 
-    
+
     return Call;
   }
   void addVar(std::shared_ptr<MemVarInfo> Var) { VarMap.addVar(Var); }

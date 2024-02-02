@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "BarrierFenceSpaceAnalyzer.h"
+#include "AnalysisInfo.h"
 #include "llvm/Support/Casting.h"
 #include <algorithm>
 
@@ -168,6 +169,27 @@ bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(
 }
 void clang::dpct::BarrierFenceSpaceAnalyzer::PostVisit(
     const CXXConstructExpr *) {}
+
+template <class TargetTy, class NodeTy>
+static inline const TargetTy *findAncestorInFunctionScope(
+    const NodeTy *N, const FunctionDecl *Scope,
+    const std::function<const void *(const DynTypedNode &,
+                                     const DynTypedNode &)> &Operation) {
+  auto &Context = clang::dpct::DpctGlobalInfo::getContext();
+  DynTypedNode Current = DynTypedNode::create(*N);
+  DynTypedNodeList Parents = Context.getParents(Current);
+  while (!Parents.empty()) {
+    if (Parents[0].get<FunctionDecl>() &&
+        Parents[0].get<FunctionDecl>() == Scope)
+      break;
+    if (const void *Node = Operation(Parents[0], Current)) {
+      return reinterpret_cast<const TargetTy *>(Node);
+    }
+    Current = Parents[0];
+    Parents = Context.getParents(Current);
+  }
+  return nullptr;
+}
 
 /// @brief Check if a DRE is assigned to another DRE.
 /// This function checks the ancestors of \p CurrentDRE iteratively.
