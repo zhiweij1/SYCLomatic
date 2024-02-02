@@ -60,13 +60,13 @@ bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(const CallExpr *CE) {
 
   if (FuncName == "__syncthreads") {
     SyncCallInfo SCI;
-    SCI.Predecessors.push_back(
+    SCI.Predecessors.insert(
         SourceRange(FD->getBody()->getBeginLoc(), CE->getBeginLoc()));
-    SCI.Successors.push_back(
+    SCI.Successors.insert(
         SourceRange(CE->getEndLoc(), FD->getBody()->getEndLoc()));
     if (!LoopRange.empty()) {
-      SCI.Predecessors.push_back(LoopRange.front());
-      SCI.Successors.push_back(LoopRange.front());
+      SCI.Predecessors.insert(LoopRange.front());
+      SCI.Successors.insert(LoopRange.front());
     }
     SyncCallsVec.push_back(std::make_pair(CE, SCI));
   }
@@ -790,7 +790,7 @@ bool clang::dpct::BarrierFenceSpaceAnalyzer::isAccessingMemory(
 }
 
 bool clang::dpct::BarrierFenceSpaceAnalyzer::isInRanges(
-    SourceLocation SL, std::vector<SourceRange> Ranges) {
+    SourceLocation SL, Ranges Ranges) {
   auto &SM = DpctGlobalInfo::getSourceManager();
   for (auto &Range : Ranges) {
     if (SM.getFileOffset(Range.getBegin()) < SM.getFileOffset(SL) &&

@@ -4801,6 +4801,7 @@ void DeviceFunctionInfo::merge(std::shared_ptr<DeviceFunctionInfo> Other) {
     return;
   VarMap.merge(Other->getVarMap());
   dpct::merge(CallExprMap, Other->CallExprMap);
+  dpct::merge(ParentDFIs, Other->ParentDFIs);
   if (BaseObjectTexture)
     BaseObjectTexture->merge(Other->BaseObjectTexture);
   else

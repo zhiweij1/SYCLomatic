@@ -84,14 +84,14 @@ private:
   isAssignedToAnotherDREOrVD(const DeclRefExpr *);
   bool isAccessingMemory(const DeclRefExpr *);
   AccessMode getAccessKind(const DeclRefExpr *);
-  using Ranges = std::vector<SourceRange>;
-  struct SyncCallInfo {
-    SyncCallInfo() {}
-    SyncCallInfo(Ranges Predecessors, Ranges Successors)
-        : Predecessors(Predecessors), Successors(Successors){};
-    Ranges Predecessors;
-    Ranges Successors;
-  };
+  //using Ranges = std::vector<SourceRange>;
+  //struct SyncCallInfo {
+  //  SyncCallInfo() {}
+  //  SyncCallInfo(Ranges Predecessors, Ranges Successors)
+  //      : Predecessors(Predecessors), Successors(Successors){};
+  //  Ranges Predecessors;
+  //  Ranges Successors;
+  //};
 
   struct DREInfo {
     DREInfo(const DeclRefExpr *DRE, SourceLocation SL, AccessMode AM)
@@ -154,7 +154,7 @@ private:
     }
     return nullptr;
   }
-  bool isInRanges(SourceLocation SL, std::vector<SourceRange> Ranges);
+  bool isInRanges(SourceLocation SL, Ranges Ranges);
   std::string isAnalyzableWriteInLoop(
       const std::set<const DeclRefExpr *> &WriteInLoopDRESet);
 

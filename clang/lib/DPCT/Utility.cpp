@@ -4821,5 +4821,38 @@ int isArgumentInitialized(
 
   return DeclsRequireInit.empty();
 }
+const Stmt *findOuterMostLoopNodeInFunction(const Stmt *N,
+                                            const Stmt *Until) {
+  if (!N)
+    return nullptr;
+  const Stmt *LoopNode = nullptr;
+  auto &Context = dpct::DpctGlobalInfo::getContext();
+  clang::DynTypedNodeList Parents = Context.getParents(*N);
+  while (!Parents.empty()) {
+    auto &Cur = Parents[0];
+    if (Cur.get<Stmt>() && Cur.get<Stmt>() == Until)
+      return LoopNode;
+    if (Cur.get<ForStmt>() || Cur.get<DoStmt>() || Cur.get<WhileStmt>())
+      LoopNode = Cur.get<Stmt>();
+    Parents = Context.getParents(Cur);
+  }
+  return nullptr;
+}
+const CompoundStmt *getFunctionBody(const Stmt *N) {
+  if (!N)
+    return nullptr;
+  auto &Context = dpct::DpctGlobalInfo::getContext();
+  clang::DynTypedNodeList Parents = Context.getParents(*N);
+  while (!Parents.empty()) {
+    auto &Cur = Parents[0];
+    if (const auto FD = Cur.get<FunctionDecl>()) {
+      return dyn_cast<CompoundStmt>(FD->getBody());
+    } else if (const auto CMD = Cur.get<CXXMethodDecl>()) {
+      return dyn_cast<CompoundStmt>(CMD->getBody());
+    }
+    Parents = Context.getParents(Cur);
+  }
+  return nullptr;
+}
 } // namespace dpct
 } // namespace clang

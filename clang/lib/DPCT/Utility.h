@@ -599,6 +599,10 @@ matchTargetDREInScope(const clang::VarDecl *TargetDecl,
 int isArgumentInitialized(
     const clang::Expr *Arg,
     std::vector<const clang::VarDecl *> &DeclsRequireInit);
+const clang::Stmt *
+findOuterMostLoopNodeInFunction(const clang::Stmt *N,
+                                const clang::Stmt *Until);
+const clang::CompoundStmt *getFunctionBody(const clang::Stmt *N);
 } // namespace dpct
 namespace ast_matchers {
 AST_MATCHER_P(DeclRefExpr, isDeclSameAs, const VarDecl *, TargetVD) {
