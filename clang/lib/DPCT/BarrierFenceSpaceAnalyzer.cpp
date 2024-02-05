@@ -229,7 +229,7 @@ clang::dpct::InterproceduralAnalyzer::isAssignedToAnotherDREOrVD(
 }
 
 clang::dpct::BarrierFenceSpaceAnalyzer::AccessMode
-clang::dpct::InterproceduralAnalyzer::getAccessKind(
+clang::dpct::InterproceduralAnalyzer::getAccessKindReadWrite(
     const DeclRefExpr *CurrentDRE) {
   bool FoundDeref = false;
   bool FoundBO = false;
@@ -474,13 +474,6 @@ bool isMeetAnalyisPrerequirements(const CallExpr *CE, const FunctionDecl *&FD) {
 #endif
     return false;
   }
-  if (!FD->hasAttr<CUDAGlobalAttr>()) {
-#ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
-    std::cout << "Return False case H: !FD->hasAttr<CUDAGlobalAttr>()"
-              << std::endl;
-#endif
-    return false;
-  }
   std::unordered_set<const DeviceFunctionInfo *> Visited{};
   auto DFI = DeviceFunctionDecl::LinkRedecls(FD);
   if (!DFI) {
@@ -501,7 +494,7 @@ bool isMeetAnalyisPrerequirements(const CallExpr *CE, const FunctionDecl *&FD) {
 }
 } // namespace
 
-void clang::dpct::InterproceduralAnalyzer::constructDefUseMap() {
+void clang::dpct::IntraproceduralAnalyzer::constructDefUseMap() {
   auto getSize =
       [](const std::unordered_map<const ParmVarDecl *,
                                   std::set<const DeclRefExpr *>> &DefUseMap)
@@ -574,7 +567,7 @@ void clang::dpct::InterproceduralAnalyzer::constructDefUseMap() {
 #endif
 }
 
-void clang::dpct::InterproceduralAnalyzer::simplifyMap(
+void clang::dpct::IntraproceduralAnalyzer::simplifyMap(
     std::map<const ParmVarDecl *, std::set<DREInfo>> &DefDREInfoMap) {
   std::map<const ParmVarDecl *,
            std::set<std::pair<const DeclRefExpr *, AccessMode>>>
@@ -583,11 +576,15 @@ void clang::dpct::InterproceduralAnalyzer::simplifyMap(
   for (const auto &Pair : DefUseMap) {
     for (const auto &Item : Pair.second) {
       if (isAccessingMemory(Item)) {
-        if (!hasOverlappingAccessAmongWorkItems(KernelCallBlockDim, Item)) {
-          MayDependOn1DKernel = true;
-        } else {
+        AccessMode AMRW = getAccessKindReadWrite(Item);
+        if (AMRW == AccessMode::Read) {
+          DefDREInfoMapTemp[Pair.first].insert(std::make_pair(Item, AMRW));
+        } else if (hasOverlappingAccessAmongWorkItems(Item)) {
           DefDREInfoMapTemp[Pair.first].insert(
-              std::make_pair(Item, getAccessKind(Item)));
+              std::make_pair(Item, AccessMode(AMRW | AccessMode::Overlap)));
+        } else {
+          DefDREInfoMapTemp[Pair.first].insert(std::make_pair(
+              Item, AccessMode(AMRW | AccessMode::NotOverlapIf1D)));
         }
       }
     }
@@ -616,13 +613,13 @@ void clang::dpct::InterproceduralAnalyzer::simplifyMap(
 #endif
 }
 
-clang::dpct::BarrierFenceSpaceAnalyzerResult
+clang::dpct::InterproceduralAnalyzerResult
 clang::dpct::InterproceduralAnalyzer::analyze(const CallExpr *CE,
                                               bool SkipCacheInAnalyzer) {
   // Check prerequirements
   const FunctionDecl *FD = nullptr;
   if (!isMeetAnalyisPrerequirements(CE, FD))
-    return BarrierFenceSpaceAnalyzerResult(false, false, false,
+    return InterproceduralAnalyzerResult(false, false, false,
                                            GlobalFunctionName);
 
   // Init values
@@ -656,7 +653,7 @@ clang::dpct::InterproceduralAnalyzer::analyze(const CallExpr *CE,
       if (CEIter != FDIter->second.end()) {
         return CEIter->second;
       } else {
-        return BarrierFenceSpaceAnalyzerResult(false, false, false,
+        return InterproceduralAnalyzerResult(false, false, false,
                                                GlobalFunctionName);
       }
     }
@@ -669,9 +666,9 @@ clang::dpct::InterproceduralAnalyzer::analyze(const CallExpr *CE,
   if (!this->TraverseDecl(const_cast<FunctionDecl *>(FD))) {
     if (!SkipCacheInAnalyzer) {
       CachedResults[FDLoc] =
-          std::unordered_map<std::string, BarrierFenceSpaceAnalyzerResult>();
+          std::unordered_map<std::string, InterproceduralAnalyzerResult>();
     }
-    return BarrierFenceSpaceAnalyzerResult(false, false, false,
+    return InterproceduralAnalyzerResult(false, false, false,
                                            GlobalFunctionName);
   }
 
@@ -703,18 +700,18 @@ clang::dpct::InterproceduralAnalyzer::analyze(const CallExpr *CE,
     for (auto &SyncCall : SyncCallsVec) {
       if (CE == SyncCall.first) {
         auto Res = isSafeToUseLocalBarrier(DefLocInfoMap, SyncCall.second);
-        return BarrierFenceSpaceAnalyzerResult(
+        return InterproceduralAnalyzerResult(
             std::get<0>(Res), std::get<1>(Res), MayDependOn1DKernel,
             GlobalFunctionName, std::get<2>(Res));
       }
     }
-    return BarrierFenceSpaceAnalyzerResult(false, false, false,
+    return InterproceduralAnalyzerResult(false, false, false,
                                            GlobalFunctionName);
   }
   for (auto &SyncCall : SyncCallsVec) {
     auto Res = isSafeToUseLocalBarrier(DefLocInfoMap, SyncCall.second);
     CachedResults[FDLoc][getHashStrFromLoc(SyncCall.first->getBeginLoc())] =
-        BarrierFenceSpaceAnalyzerResult(std::get<0>(Res), std::get<1>(Res),
+        InterproceduralAnalyzerResult(std::get<0>(Res), std::get<1>(Res),
                                         MayDependOn1DKernel, GlobalFunctionName,
                                         std::get<2>(Res));
   }
@@ -726,21 +723,93 @@ clang::dpct::InterproceduralAnalyzer::analyze(const CallExpr *CE,
     if (CEIter != FDIter->second.end()) {
       return CEIter->second;
     } else {
-      return BarrierFenceSpaceAnalyzerResult(false, false, false,
+      return InterproceduralAnalyzerResult(false, false, false,
                                              GlobalFunctionName);
     }
   }
-  return BarrierFenceSpaceAnalyzerResult(false, false, false,
+  return InterproceduralAnalyzerResult(false, false, false,
                                          GlobalFunctionName);
 }
 
-bool clang::dpct::InterproceduralAnalyzer::hasOverlappingAccessAmongWorkItems(
-    int KernelCallBlockDim, const DeclRefExpr *DRE) {
-  using namespace ast_matchers;
-  if (KernelCallBlockDim != 1) {
-    return true;
+clang::dpct::IntraproceduralAnalyzerResult
+clang::dpct::IntraproceduralAnalyzer::analyze(const CallExpr *CE) {
+  // Check prerequirements
+  const FunctionDecl *FD = nullptr;
+  if (!isMeetAnalyisPrerequirements(CE, FD))
+    return IntraproceduralAnalyzerResult(true);
+
+  // Init values
+  this->FD = FD;
+
+  CELoc = getHashStrFromLoc(CE->getBeginLoc());
+  FDLoc = getHashStrFromLoc(FD->getBeginLoc());
+
+  auto FDIter = CachedResults.find(FDLoc);
+  if (FDIter != CachedResults.end()) {
+    auto CEIter = FDIter->second.find(CELoc);
+    if (CEIter != FDIter->second.end()) {
+      return CEIter->second;
+    } else {
+      return IntraproceduralAnalyzerResult(true);
+    }
   }
 
+#ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
+  std::cout << "Before traversing current __global__ function" << std::endl;
+#endif
+
+  if (!this->TraverseDecl(const_cast<FunctionDecl *>(FD))) {
+    CachedResults[FDLoc] =
+        std::unordered_map<std::string, IntraproceduralAnalyzerResult>();
+    return IntraproceduralAnalyzerResult(true);
+  }
+
+  constructDefUseMap();
+  std::map<const ParmVarDecl *, std::set<DREInfo>> DefLocInfoMap;
+  simplifyMap(DefLocInfoMap);
+
+#ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
+  std::cout << "===== SyncCall info contnet: =====" << std::endl;
+  for (const auto &SyncCall : SyncCallsVec) {
+    const auto &SM = DpctGlobalInfo::getSourceManager();
+    std::cout << "SyncCall:" << SyncCall.first->getBeginLoc().printToString(SM)
+              << std::endl;
+    std::cout << "    Predecessors:" << std::endl;
+    for (const auto &Range : SyncCall.second.Predecessors) {
+      std::cout << "        [" << Range.getBegin().printToString(SM) << ", "
+                << Range.getEnd().printToString(SM) << "]" << std::endl;
+    }
+    std::cout << "    Successors:" << std::endl;
+    for (const auto &Range : SyncCall.second.Successors) {
+      std::cout << "        [" << Range.getBegin().printToString(SM) << ", "
+                << Range.getEnd().printToString(SM) << "]" << std::endl;
+    }
+  }
+  std::cout << "===== SyncCall info contnet end =====" << std::endl;
+#endif
+
+  for (auto &SyncCall : SyncCallsVec) {
+    CachedResults[FDLoc][getHashStrFromLoc(SyncCall.first->getBeginLoc())] =
+        IntraproceduralAnalyzerResult(
+            affectedByWhichParameters(DefLocInfoMap, SyncCall.second));
+  }
+
+  // find the result in the new map
+  FDIter = CachedResults.find(FDLoc);
+  if (FDIter != CachedResults.end()) {
+    auto CEIter = FDIter->second.find(CELoc);
+    if (CEIter != FDIter->second.end()) {
+      return CEIter->second;
+    } else {
+      return IntraproceduralAnalyzerResult(true);
+    }
+  }
+  return IntraproceduralAnalyzerResult(true);
+}
+
+bool clang::dpct::IntraproceduralAnalyzer::hasOverlappingAccessAmongWorkItems(
+    const DeclRefExpr *DRE) {
+  using namespace ast_matchers;
   const ArraySubscriptExpr *ASE = getArraySubscriptExpr(DRE);
   if (!ASE)
     return true;
@@ -814,7 +883,7 @@ bool clang::dpct::BarrierFenceSpaceAnalyzer::isInRanges(SourceLocation SL,
 //   mem[idx] = var;
 //   ...
 // }
-std::string clang::dpct::InterproceduralAnalyzer::isAnalyzableWriteInLoop(
+std::string clang::dpct::IntraproceduralAnalyzer::isAnalyzableWriteInLoop(
     const std::set<const DeclRefExpr *> &WriteInLoopDRESet) {
   if (WriteInLoopDRESet.size() > 1) {
 #ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
@@ -945,7 +1014,80 @@ clang::dpct::InterproceduralAnalyzer::isSafeToUseLocalBarrier(
   return {true, false, ""};
 }
 
+std::map<unsigned int /*parameter idx*/, AffectedResult>
+IntraproceduralAnalyzer::affectedByWhichParameters(
+    const std::map<const ParmVarDecl *, std::set<DREInfo>> &DefDREInfoMap,
+    const SyncCallInfo &SCI) {
+  auto convertPVD2Idx = [](const FunctionDecl *FD, const ParmVarDecl *PVD) {
+    unsigned int Idx = 0;
+    for (const auto D : FD->parameters()) {
+      if (D == PVD)
+        return Idx;
+      Idx++;
+    }
+    assert(0 && "PVD is not in the FD.");
+  };
+
+  std::map<unsigned int /*parameter idx*/,
+           AffectedResult>
+      AffectingParameters;
+  for (auto &DefDREInfo : DefDREInfoMap) {
+    bool FoundRead = false;
+    bool FoundWrite = false;
+    bool DREInPredecessors = false;
+    bool DREInSuccessors = false;
+    bool HasOverlap = false;
+    std::set<const DeclRefExpr *> WriteAfterWriteDRE;
+    for (auto &DREInfo : DefDREInfo.second) {
+      if (DREInfo.SL.isMacroID() || (DREInfo.AM == AccessMode::ReadWrite)) {
+        AffectingParameters.insert(
+            std::make_pair(convertPVD2Idx(FD, DefDREInfo.first),
+                           AffectedResult{false, false, false, ""}));
+        break;
+      }
+      if (DREInfo.AM & AccessMode::Read) {
+        FoundRead = true;
+      } else if (DREInfo.AM & AccessMode::Write) {
+        FoundWrite = true;
+      }
+      if (isInRanges(DREInfo.SL, SCI.Predecessors)) {
+        DREInPredecessors = true;
+      }
+      if (isInRanges(DREInfo.SL, SCI.Successors)) {
+        DREInSuccessors = true;
+      }
+      if (FoundWrite && DREInPredecessors && DREInSuccessors) {
+        WriteAfterWriteDRE.insert(DREInfo.DRE);
+      }
+      HasOverlap = HasOverlap || (DREInfo.AM & AccessMode::Overlap);
+    }
+    if (FoundRead && FoundWrite) {
+      if (HasOverlap)
+        AffectingParameters.insert(
+            std::make_pair(convertPVD2Idx(FD, DefDREInfo.first),
+                           AffectedResult{false, false, false, ""}));
+      else
+        AffectingParameters.insert(
+            std::make_pair(convertPVD2Idx(FD, DefDREInfo.first),
+                           AffectedResult{false, true, false, ""}));
+    }
+    if (!FoundRead && !WriteAfterWriteDRE.empty()) {
+      auto StepStr = isAnalyzableWriteInLoop(WriteAfterWriteDRE);
+      if (StepStr.empty()) {
+        AffectingParameters.insert(
+            std::make_pair(convertPVD2Idx(FD, DefDREInfo.first),
+                           AffectedResult{false, false, false, ""}));
+      } else {
+        AffectingParameters.insert(
+            std::make_pair(convertPVD2Idx(FD, DefDREInfo.first),
+                           AffectedResult{false, false, true, StepStr}));
+      }
+    }
+  }
+  return AffectingParameters;
+}
+
 std::unordered_map<
-    std::string, std::unordered_map<
-                     std::string, clang::dpct::BarrierFenceSpaceAnalyzerResult>>
-    clang::dpct::InterproceduralAnalyzer::CachedResults;
+    std::string,
+    std::unordered_map<std::string, clang::dpct::IntraproceduralAnalyzerResult>>
+    clang::dpct::IntraproceduralAnalyzer::CachedResults;

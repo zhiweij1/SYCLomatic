@@ -28,13 +28,39 @@ template <> struct std::hash<clang::SourceRange> {
 namespace clang {
 namespace dpct {
 
-struct BarrierFenceSpaceAnalyzerResult {
-  BarrierFenceSpaceAnalyzerResult() {}
-  BarrierFenceSpaceAnalyzerResult(bool CanUseLocalBarrier,
-                                  bool CanUseLocalBarrierWithCondition,
-                                  bool MayDependOn1DKernel,
-                                  std::string GlobalFunctionName,
-                                  std::string Condition = "")
+struct AffectedResult {
+  AffectedResult(bool NotAffected, bool NotAffectedIf1D,
+                 bool NotAffectedIf1DWithConditons,
+                 std::string StepOfCondition)
+      : NotAffected(NotAffected), NotAffectedIf1D(NotAffectedIf1D),
+        NotAffectedIf1DWithConditons(NotAffectedIf1DWithConditons),
+        StepOfCondition(StepOfCondition) {}
+  bool NotAffected = false;
+  bool NotAffectedIf1D = false;
+  bool NotAffectedIf1DWithConditons = false;
+  std::string StepOfCondition;
+};
+
+struct IntraproceduralAnalyzerResult {
+  IntraproceduralAnalyzerResult(bool UnsupportedCase)
+      : UnsupportedCase(UnsupportedCase) {}
+  IntraproceduralAnalyzerResult(
+      std::map<unsigned int /*parameter idx*/, AffectedResult>
+          AffectedByWhichParameters)
+      : UnsupportedCase(false),
+        AffectedByWhichParameters(AffectedByWhichParameters) {}
+  bool UnsupportedCase = true;
+  std::map<unsigned int /*parameter idx*/, AffectedResult>
+      AffectedByWhichParameters;
+};
+
+struct InterproceduralAnalyzerResult {
+  InterproceduralAnalyzerResult() {}
+  InterproceduralAnalyzerResult(bool CanUseLocalBarrier,
+                                bool CanUseLocalBarrierWithCondition,
+                                bool MayDependOn1DKernel,
+                                std::string GlobalFunctionName,
+                                std::string Condition = "")
       : CanUseLocalBarrier(CanUseLocalBarrier),
         CanUseLocalBarrierWithCondition(CanUseLocalBarrierWithCondition),
         MayDependOn1DKernel(MayDependOn1DKernel),
@@ -79,11 +105,14 @@ public:
   VISIT_NODE(MemberExpr)
   VISIT_NODE(CXXDependentScopeMemberExpr)
 
-  virtual BarrierFenceSpaceAnalyzerResult
-  analyze(const CallExpr *CE, bool SkipCacheInAnalyzer = false) = 0;
-
 protected:
-  enum class AccessMode : int { Read = 0, Write, ReadWrite };
+  enum AccessMode : std::uint32_t {
+    Read = 1 << 0,
+    Write = 1 << 1,
+    ReadWrite = 1 << 2,
+    Overlap = 1 << 3,
+    NotOverlapIf1D = 1 << 4,
+  };
   struct DREInfo {
     DREInfo(const DeclRefExpr *DRE, SourceLocation SL, AccessMode AM)
         : DRE(DRE), SL(SL), AM(AM) {}
@@ -96,20 +125,13 @@ protected:
   virtual std::pair<std::set<const DeclRefExpr *>, std::set<const VarDecl *>>
   isAssignedToAnotherDREOrVD(const DeclRefExpr *) = 0;
   virtual bool isAccessingMemory(const DeclRefExpr *) = 0;
-  virtual AccessMode getAccessKind(const DeclRefExpr *) = 0;
+  virtual AccessMode getAccessKindReadWrite(const DeclRefExpr *) = 0;
   virtual std::tuple<bool /*CanUseLocalBarrier*/,
                      bool /*CanUseLocalBarrierWithCondition*/,
                      std::string /*Condition*/>
   isSafeToUseLocalBarrier(
       const std::map<const ParmVarDecl *, std::set<DREInfo>> &DefDREInfoMap,
       const SyncCallInfo &SCI) = 0;
-  virtual bool hasOverlappingAccessAmongWorkItems(int KernelDim,
-                                                  const DeclRefExpr *DRE) = 0;
-  virtual void constructDefUseMap() = 0;
-  virtual void simplifyMap(
-      std::map<const ParmVarDecl *, std::set<DREInfo>> &DefDREInfoMap) = 0;
-  virtual std::string isAnalyzableWriteInLoop(
-      const std::set<const DeclRefExpr *> &WriteInLoopDRESet) = 0;
 
   bool containsMacro(const SourceLocation &SL, const SyncCallInfo &SCI);
   bool isInRanges(SourceLocation SL, Ranges Ranges);
@@ -182,11 +204,47 @@ protected:
   };
 };
 
-class IntraproceduralAnalyzer : public BarrierFenceSpaceAnalyzer {};
+class IntraproceduralAnalyzer : public BarrierFenceSpaceAnalyzer {
+public:
+  IntraproceduralAnalyzerResult analyze(const CallExpr *CE);
+private:
+  void constructDefUseMap();
+  void simplifyMap(
+      std::map<const ParmVarDecl *, std::set<DREInfo>> &DefDREInfoMap);
+  bool hasOverlappingAccessAmongWorkItems(const DeclRefExpr *DRE);
+  std::map<unsigned int /*parameter idx*/, AffectedResult>
+  affectedByWhichParameters(
+      const std::map<const ParmVarDecl *, std::set<DREInfo>> &DefDREInfoMap,
+      const SyncCallInfo &SCI);
+  std::string isAnalyzableWriteInLoop(
+      const std::set<const DeclRefExpr *> &WriteInLoopDRESet);
+
+  const FunctionDecl *FD = nullptr;
+  std::string CELoc;
+  std::string FDLoc;
+  /// (FD location, (Call location, result))
+  static std::unordered_map<
+      std::string,
+      std::unordered_map<std::string, IntraproceduralAnalyzerResult>>
+      CachedResults;
+  std::vector<std::pair<const CallExpr *, SyncCallInfo>> SyncCallsVec;
+  std::unordered_map<const ParmVarDecl *, std::set<const DeclRefExpr *>>
+      DefUseMap;
+  // This map contains pairs meet below pattern:
+  // loop {
+  //   ...
+  //   DRE[idx] = ...;
+  //   ...
+  //   idx += step;
+  //   ...
+  // }
+  std::map<const DeclRefExpr *, std::string> DREIncStepMap;
+};
+
 class InterproceduralAnalyzer : public BarrierFenceSpaceAnalyzer {
 public:
-  BarrierFenceSpaceAnalyzerResult
-  analyze(const CallExpr *CE, bool SkipCacheInAnalyzer = false) override;
+  InterproceduralAnalyzerResult
+  analyze(const CallExpr *CE, bool SkipCacheInAnalyzer = false);
 
   VISIT_NODE(ForStmt)
   VISIT_NODE(DoStmt)
@@ -199,20 +257,13 @@ private:
   std::pair<std::set<const DeclRefExpr *>, std::set<const VarDecl *>>
   isAssignedToAnotherDREOrVD(const DeclRefExpr *) override;
   bool isAccessingMemory(const DeclRefExpr *) override;
-  AccessMode getAccessKind(const DeclRefExpr *) override;
+  AccessMode getAccessKindReadWrite(const DeclRefExpr *) override;
   std::tuple<bool /*CanUseLocalBarrier*/,
              bool /*CanUseLocalBarrierWithCondition*/,
              std::string /*Condition*/>
   isSafeToUseLocalBarrier(
       const std::map<const ParmVarDecl *, std::set<DREInfo>> &DefDREInfoMap,
       const SyncCallInfo &SCI) override;
-  bool hasOverlappingAccessAmongWorkItems(int KernelDim,
-                                          const DeclRefExpr *DRE) override;
-  void constructDefUseMap() override;
-  void simplifyMap(
-      std::map<const ParmVarDecl *, std::set<DREInfo>> &DefDREInfoMap) override;
-  std::string isAnalyzableWriteInLoop(
-      const std::set<const DeclRefExpr *> &WriteInLoopDRESet) override;
 
   std::vector<std::pair<const CallExpr *, SyncCallInfo>> SyncCallsVec;
   std::deque<SourceRange> LoopRange;
@@ -224,24 +275,9 @@ private:
       DefUseMap;
   std::string CELoc;
   std::string FDLoc;
-  /// (FD location, (Call location, result))
-  static std::unordered_map<
-      std::string,
-      std::unordered_map<std::string, BarrierFenceSpaceAnalyzerResult>>
-      CachedResults;
   bool SkipCacheInAnalyzer = false;
   bool MayDependOn1DKernel = false;
   std::set<const Expr *> DeviceFunctionCallArgs;
-  bool IsDifferenceBetweenThreadIdxXAndIndexConstant = false;
-  // This map contains pairs meet below pattern:
-  // loop {
-  //   ...
-  //   DRE[idx] = ...;
-  //   ...
-  //   idx += step;
-  //   ...
-  // }
-  std::map<const DeclRefExpr *, std::string> DREIncStepMap;
 };
 #undef VISIT_NODE
 
