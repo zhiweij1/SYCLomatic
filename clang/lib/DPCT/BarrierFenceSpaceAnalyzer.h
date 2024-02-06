@@ -42,6 +42,7 @@ struct AffectedResult {
 };
 
 struct IntraproceduralAnalyzerResult {
+  IntraproceduralAnalyzerResult() {}
   IntraproceduralAnalyzerResult(bool UnsupportedCase)
       : UnsupportedCase(UnsupportedCase) {}
   IntraproceduralAnalyzerResult(
@@ -49,6 +50,7 @@ struct IntraproceduralAnalyzerResult {
           AffectedByWhichParameters)
       : UnsupportedCase(false),
         AffectedByWhichParameters(AffectedByWhichParameters) {}
+
   bool UnsupportedCase = true;
   std::map<unsigned int /*parameter idx*/, AffectedResult>
       AffectedByWhichParameters;
@@ -96,15 +98,6 @@ struct SyncCallInfo {
 
 class BarrierFenceSpaceAnalyzer
     : public RecursiveASTVisitor<BarrierFenceSpaceAnalyzer> {
-public:
-  bool shouldVisitImplicitCode() const { return true; }
-  bool shouldTraversePostOrder() const { return false; }
-
-  VISIT_NODE(GotoStmt)
-  VISIT_NODE(LabelStmt)
-  VISIT_NODE(MemberExpr)
-  VISIT_NODE(CXXDependentScopeMemberExpr)
-
 protected:
   enum AccessMode : std::uint32_t {
     Read = 1 << 0,
@@ -121,17 +114,6 @@ protected:
     AccessMode AM;
     bool operator<(const DREInfo &Other) const { return DRE < Other.DRE; }
   };
-
-  virtual std::pair<std::set<const DeclRefExpr *>, std::set<const VarDecl *>>
-  isAssignedToAnotherDREOrVD(const DeclRefExpr *) = 0;
-  virtual bool isAccessingMemory(const DeclRefExpr *) = 0;
-  virtual AccessMode getAccessKindReadWrite(const DeclRefExpr *) = 0;
-  virtual std::tuple<bool /*CanUseLocalBarrier*/,
-                     bool /*CanUseLocalBarrierWithCondition*/,
-                     std::string /*Condition*/>
-  isSafeToUseLocalBarrier(
-      const std::map<const ParmVarDecl *, std::set<DREInfo>> &DefDREInfoMap,
-      const SyncCallInfo &SCI) = 0;
 
   bool containsMacro(const SourceLocation &SL, const SyncCallInfo &SCI);
   bool isInRanges(SourceLocation SL, Ranges Ranges);
@@ -206,6 +188,20 @@ protected:
 
 class IntraproceduralAnalyzer : public BarrierFenceSpaceAnalyzer {
 public:
+  bool shouldVisitImplicitCode() const { return true; }
+  bool shouldTraversePostOrder() const { return false; }
+
+  VISIT_NODE(GotoStmt)
+  VISIT_NODE(LabelStmt)
+  VISIT_NODE(MemberExpr)
+  VISIT_NODE(CXXDependentScopeMemberExpr)
+  VISIT_NODE(ForStmt)
+  VISIT_NODE(DoStmt)
+  VISIT_NODE(WhileStmt)
+  VISIT_NODE(CallExpr)
+  VISIT_NODE(DeclRefExpr)
+  VISIT_NODE(CXXConstructExpr)
+
   IntraproceduralAnalyzerResult analyze(const CallExpr *CE);
 private:
   void constructDefUseMap();
@@ -218,6 +214,10 @@ private:
       const SyncCallInfo &SCI);
   std::string isAnalyzableWriteInLoop(
       const std::set<const DeclRefExpr *> &WriteInLoopDRESet);
+  std::pair<std::set<const DeclRefExpr *>, std::set<const VarDecl *>>
+  isAssignedToAnotherDREOrVD(const DeclRefExpr *);
+  bool isAccessingMemory(const DeclRefExpr *);
+  AccessMode getAccessKindReadWrite(const DeclRefExpr *);
 
   const FunctionDecl *FD = nullptr;
   std::string CELoc;
@@ -239,6 +239,8 @@ private:
   //   ...
   // }
   std::map<const DeclRefExpr *, std::string> DREIncStepMap;
+  std::deque<SourceRange> LoopRange;
+  std::set<const Expr *> DeviceFunctionCallArgs;
 };
 
 class InterproceduralAnalyzer : public BarrierFenceSpaceAnalyzer {
@@ -246,27 +248,15 @@ public:
   InterproceduralAnalyzerResult
   analyze(const CallExpr *CE, bool SkipCacheInAnalyzer = false);
 
-  VISIT_NODE(ForStmt)
-  VISIT_NODE(DoStmt)
-  VISIT_NODE(WhileStmt)
-  VISIT_NODE(CallExpr)
-  VISIT_NODE(DeclRefExpr)
-  VISIT_NODE(CXXConstructExpr)
-
 private:
-  std::pair<std::set<const DeclRefExpr *>, std::set<const VarDecl *>>
-  isAssignedToAnotherDREOrVD(const DeclRefExpr *) override;
-  bool isAccessingMemory(const DeclRefExpr *) override;
-  AccessMode getAccessKindReadWrite(const DeclRefExpr *) override;
   std::tuple<bool /*CanUseLocalBarrier*/,
              bool /*CanUseLocalBarrierWithCondition*/,
              std::string /*Condition*/>
   isSafeToUseLocalBarrier(
       const std::map<const ParmVarDecl *, std::set<DREInfo>> &DefDREInfoMap,
-      const SyncCallInfo &SCI) override;
+      const SyncCallInfo &SCI);
 
   std::vector<std::pair<const CallExpr *, SyncCallInfo>> SyncCallsVec;
-  std::deque<SourceRange> LoopRange;
   int KernelDim = 3;          // 3 or 1
   int KernelCallBlockDim = 3; // 3 or 1
   const FunctionDecl *FD = nullptr;
@@ -277,7 +267,6 @@ private:
   std::string FDLoc;
   bool SkipCacheInAnalyzer = false;
   bool MayDependOn1DKernel = false;
-  std::set<const Expr *> DeviceFunctionCallArgs;
 };
 #undef VISIT_NODE
 

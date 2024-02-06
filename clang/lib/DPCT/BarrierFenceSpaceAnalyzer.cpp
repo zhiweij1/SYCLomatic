@@ -13,28 +13,28 @@
 
 using namespace llvm;
 
-bool clang::dpct::InterproceduralAnalyzer::Visit(const ForStmt *FS) {
+bool clang::dpct::IntraproceduralAnalyzer::Visit(const ForStmt *FS) {
   LoopRange.push_back(FS->getSourceRange());
   return true;
 }
-void clang::dpct::InterproceduralAnalyzer::PostVisit(const clang::ForStmt *FS) {
+void clang::dpct::IntraproceduralAnalyzer::PostVisit(const clang::ForStmt *FS) {
   LoopRange.pop_back();
 }
-bool clang::dpct::InterproceduralAnalyzer::Visit(const DoStmt *DS) {
+bool clang::dpct::IntraproceduralAnalyzer::Visit(const DoStmt *DS) {
   LoopRange.push_back(DS->getSourceRange());
   return true;
 }
-void clang::dpct::InterproceduralAnalyzer::PostVisit(const DoStmt *DS) {
+void clang::dpct::IntraproceduralAnalyzer::PostVisit(const DoStmt *DS) {
   LoopRange.pop_back();
 }
-bool clang::dpct::InterproceduralAnalyzer::Visit(const WhileStmt *WS) {
+bool clang::dpct::IntraproceduralAnalyzer::Visit(const WhileStmt *WS) {
   LoopRange.push_back(WS->getSourceRange());
   return true;
 }
-void clang::dpct::InterproceduralAnalyzer::PostVisit(const WhileStmt *WS) {
+void clang::dpct::IntraproceduralAnalyzer::PostVisit(const WhileStmt *WS) {
   LoopRange.pop_back();
 }
-bool clang::dpct::InterproceduralAnalyzer::Visit(const CallExpr *CE) {
+bool clang::dpct::IntraproceduralAnalyzer::Visit(const CallExpr *CE) {
   const FunctionDecl *FuncDecl = CE->getDirectCallee();
   if (!FuncDecl)
     return true;
@@ -57,9 +57,9 @@ bool clang::dpct::InterproceduralAnalyzer::Visit(const CallExpr *CE) {
   }
   return true;
 }
-void clang::dpct::InterproceduralAnalyzer::PostVisit(const CallExpr *) {}
+void clang::dpct::IntraproceduralAnalyzer::PostVisit(const CallExpr *) {}
 
-bool clang::dpct::InterproceduralAnalyzer::Visit(const DeclRefExpr *DRE) {
+bool clang::dpct::IntraproceduralAnalyzer::Visit(const DeclRefExpr *DRE) {
   // Collect all DREs and its Decl
   const auto PVD = dyn_cast<ParmVarDecl>(DRE->getDecl());
   if (!PVD)
@@ -91,9 +91,9 @@ bool clang::dpct::InterproceduralAnalyzer::Visit(const DeclRefExpr *DRE) {
   }
   return true;
 }
-void clang::dpct::InterproceduralAnalyzer::PostVisit(const DeclRefExpr *) {}
+void clang::dpct::IntraproceduralAnalyzer::PostVisit(const DeclRefExpr *) {}
 
-bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(const GotoStmt *GS) {
+bool clang::dpct::IntraproceduralAnalyzer::Visit(const GotoStmt *GS) {
   // We will further refine it if meet real request.
   // By default, goto/label stmt is not supported.
 #ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
@@ -104,9 +104,9 @@ bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(const GotoStmt *GS) {
 #endif
   return false;
 }
-void clang::dpct::BarrierFenceSpaceAnalyzer::PostVisit(const GotoStmt *) {}
+void clang::dpct::IntraproceduralAnalyzer::PostVisit(const GotoStmt *) {}
 
-bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(const LabelStmt *LS) {
+bool clang::dpct::IntraproceduralAnalyzer::Visit(const LabelStmt *LS) {
   // We will further refine it if meet real request.
   // By default, goto/label stmt is not supported.
 #ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
@@ -117,9 +117,9 @@ bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(const LabelStmt *LS) {
 #endif
   return false;
 }
-void clang::dpct::BarrierFenceSpaceAnalyzer::PostVisit(const LabelStmt *) {}
+void clang::dpct::IntraproceduralAnalyzer::PostVisit(const LabelStmt *) {}
 
-bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(const MemberExpr *ME) {
+bool clang::dpct::IntraproceduralAnalyzer::Visit(const MemberExpr *ME) {
   if (ME->getType()->isPointerType() || ME->getType()->isArrayType()) {
 #ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
     std::cout << "Return False case D: "
@@ -131,8 +131,8 @@ bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(const MemberExpr *ME) {
   }
   return true;
 }
-void clang::dpct::BarrierFenceSpaceAnalyzer::PostVisit(const MemberExpr *) {}
-bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(
+void clang::dpct::IntraproceduralAnalyzer::PostVisit(const MemberExpr *) {}
+bool clang::dpct::IntraproceduralAnalyzer::Visit(
     const CXXDependentScopeMemberExpr *CDSME) {
 #ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
   std::cout << "Return False case E: "
@@ -142,15 +142,15 @@ bool clang::dpct::BarrierFenceSpaceAnalyzer::Visit(
 #endif
   return false;
 }
-void clang::dpct::BarrierFenceSpaceAnalyzer::PostVisit(
+void clang::dpct::IntraproceduralAnalyzer::PostVisit(
     const CXXDependentScopeMemberExpr *) {}
 
-bool clang::dpct::InterproceduralAnalyzer::Visit(const CXXConstructExpr *CCE) {
+bool clang::dpct::IntraproceduralAnalyzer::Visit(const CXXConstructExpr *CCE) {
   for (const auto &Arg : CCE->arguments())
     DeviceFunctionCallArgs.insert(Arg);
   return true;
 }
-void clang::dpct::InterproceduralAnalyzer::PostVisit(const CXXConstructExpr *) {
+void clang::dpct::IntraproceduralAnalyzer::PostVisit(const CXXConstructExpr *) {
 }
 
 template <class TargetTy, class NodeTy>
@@ -185,7 +185,7 @@ static inline const TargetTy *findAncestorInFunctionScope(
 /// @return Assigned DREs or VDs
 std::pair<std::set<const clang::DeclRefExpr *>,
           std::set<const clang::VarDecl *>>
-clang::dpct::InterproceduralAnalyzer::isAssignedToAnotherDREOrVD(
+clang::dpct::IntraproceduralAnalyzer::isAssignedToAnotherDREOrVD(
     const DeclRefExpr *CurrentDRE) {
   std::set<const DeclRefExpr *> ResultDRESet;
   std::set<const VarDecl *> ResultVDSet;
@@ -229,7 +229,7 @@ clang::dpct::InterproceduralAnalyzer::isAssignedToAnotherDREOrVD(
 }
 
 clang::dpct::BarrierFenceSpaceAnalyzer::AccessMode
-clang::dpct::InterproceduralAnalyzer::getAccessKindReadWrite(
+clang::dpct::IntraproceduralAnalyzer::getAccessKindReadWrite(
     const DeclRefExpr *CurrentDRE) {
   bool FoundDeref = false;
   bool FoundBO = false;
@@ -616,117 +616,6 @@ void clang::dpct::IntraproceduralAnalyzer::simplifyMap(
 clang::dpct::InterproceduralAnalyzerResult
 clang::dpct::InterproceduralAnalyzer::analyze(const CallExpr *CE,
                                               bool SkipCacheInAnalyzer) {
-  // Check prerequirements
-  const FunctionDecl *FD = nullptr;
-  if (!isMeetAnalyisPrerequirements(CE, FD))
-    return InterproceduralAnalyzerResult(false, false, false,
-                                           GlobalFunctionName);
-
-  // Init values
-  this->SkipCacheInAnalyzer = SkipCacheInAnalyzer;
-  this->FD = FD;
-  GlobalFunctionName = FD->getDeclName().getAsString();
-  auto queryKernelDim = [](const FunctionDecl *FD)
-      -> std::pair<int /*kernel dim*/, int /*kernel block dim*/> {
-    const auto DFD = DpctGlobalInfo::getInstance().findDeviceFunctionDecl(FD);
-    if (!DFD)
-      return {3, 3};
-    const auto FuncInfo = DFD->getFuncInfo();
-    if (!FuncInfo)
-      return {3, 3};
-    int BlockDim = FuncInfo->KernelCallBlockDim;
-    const auto MVM =
-        MemVarMap::getHeadWithoutPathCompression(&(FuncInfo->getVarMap()));
-    if (!MVM)
-      return {3, BlockDim};
-    return {MVM->Dim, BlockDim};
-  };
-  std::tie(KernelDim, KernelCallBlockDim) = queryKernelDim(FD);
-
-  CELoc = getHashStrFromLoc(CE->getBeginLoc());
-  FDLoc = getHashStrFromLoc(FD->getBeginLoc());
-
-  auto FDIter = CachedResults.find(FDLoc);
-  if (!SkipCacheInAnalyzer) {
-    if (FDIter != CachedResults.end()) {
-      auto CEIter = FDIter->second.find(CELoc);
-      if (CEIter != FDIter->second.end()) {
-        return CEIter->second;
-      } else {
-        return InterproceduralAnalyzerResult(false, false, false,
-                                               GlobalFunctionName);
-      }
-    }
-  }
-
-#ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
-  std::cout << "Before traversing current __global__ function" << std::endl;
-#endif
-
-  if (!this->TraverseDecl(const_cast<FunctionDecl *>(FD))) {
-    if (!SkipCacheInAnalyzer) {
-      CachedResults[FDLoc] =
-          std::unordered_map<std::string, InterproceduralAnalyzerResult>();
-    }
-    return InterproceduralAnalyzerResult(false, false, false,
-                                           GlobalFunctionName);
-  }
-
-  constructDefUseMap();
-  std::map<const ParmVarDecl *, std::set<DREInfo>> DefLocInfoMap;
-  simplifyMap(DefLocInfoMap);
-
-#ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
-  std::cout << "===== SyncCall info contnet: =====" << std::endl;
-  for (const auto &SyncCall : SyncCallsVec) {
-    const auto &SM = DpctGlobalInfo::getSourceManager();
-    std::cout << "SyncCall:" << SyncCall.first->getBeginLoc().printToString(SM)
-              << std::endl;
-    std::cout << "    Predecessors:" << std::endl;
-    for (const auto &Range : SyncCall.second.Predecessors) {
-      std::cout << "        [" << Range.getBegin().printToString(SM) << ", "
-                << Range.getEnd().printToString(SM) << "]" << std::endl;
-    }
-    std::cout << "    Successors:" << std::endl;
-    for (const auto &Range : SyncCall.second.Successors) {
-      std::cout << "        [" << Range.getBegin().printToString(SM) << ", "
-                << Range.getEnd().printToString(SM) << "]" << std::endl;
-    }
-  }
-  std::cout << "===== SyncCall info contnet end =====" << std::endl;
-#endif
-
-  if (SkipCacheInAnalyzer) {
-    for (auto &SyncCall : SyncCallsVec) {
-      if (CE == SyncCall.first) {
-        auto Res = isSafeToUseLocalBarrier(DefLocInfoMap, SyncCall.second);
-        return InterproceduralAnalyzerResult(
-            std::get<0>(Res), std::get<1>(Res), MayDependOn1DKernel,
-            GlobalFunctionName, std::get<2>(Res));
-      }
-    }
-    return InterproceduralAnalyzerResult(false, false, false,
-                                           GlobalFunctionName);
-  }
-  for (auto &SyncCall : SyncCallsVec) {
-    auto Res = isSafeToUseLocalBarrier(DefLocInfoMap, SyncCall.second);
-    CachedResults[FDLoc][getHashStrFromLoc(SyncCall.first->getBeginLoc())] =
-        InterproceduralAnalyzerResult(std::get<0>(Res), std::get<1>(Res),
-                                        MayDependOn1DKernel, GlobalFunctionName,
-                                        std::get<2>(Res));
-  }
-
-  // find the result in the new map
-  FDIter = CachedResults.find(FDLoc);
-  if (FDIter != CachedResults.end()) {
-    auto CEIter = FDIter->second.find(CELoc);
-    if (CEIter != FDIter->second.end()) {
-      return CEIter->second;
-    } else {
-      return InterproceduralAnalyzerResult(false, false, false,
-                                             GlobalFunctionName);
-    }
-  }
   return InterproceduralAnalyzerResult(false, false, false,
                                          GlobalFunctionName);
 }
@@ -789,9 +678,10 @@ clang::dpct::IntraproceduralAnalyzer::analyze(const CallExpr *CE) {
 #endif
 
   for (auto &SyncCall : SyncCallsVec) {
+    IntraproceduralAnalyzerResult Value(
+        affectedByWhichParameters(DefLocInfoMap, SyncCall.second));
     CachedResults[FDLoc][getHashStrFromLoc(SyncCall.first->getBeginLoc())] =
-        IntraproceduralAnalyzerResult(
-            affectedByWhichParameters(DefLocInfoMap, SyncCall.second));
+        Value;
   }
 
   // find the result in the new map
@@ -842,7 +732,7 @@ bool clang::dpct::BarrierFenceSpaceAnalyzer::containsMacro(
   return false;
 }
 
-bool clang::dpct::InterproceduralAnalyzer::isAccessingMemory(
+bool clang::dpct::IntraproceduralAnalyzer::isAccessingMemory(
     const DeclRefExpr *DRE) {
   auto &Context = DpctGlobalInfo::getContext();
   DynTypedNode Current = DynTypedNode::create(*DRE);
@@ -903,114 +793,12 @@ std::string clang::dpct::IntraproceduralAnalyzer::isAnalyzableWriteInLoop(
   return Iter->second;
 }
 
-/// @brief Check if it is safe to use local barrier to migrate current
-/// __syncthreads call.
-/// The requirements to return ture:
-///   For each global pointer Decl :
-///   (1) all of its reference points must be read accesses
-///   or
-///   (2) all of its reference points must be wirte accesses and write accesses
-///   must all in predecessor or all in successor
-/// @param DefUsageInfoMap Saves info of all global memory pointers' reference
-/// points
-/// @param SCI Saves predecessor ranges and successor ranges of current
-/// __syncthreads call
-/// @return Is safe or not, and the condition string (if needed)
+
 std::tuple<bool /*CanUseLocalBarrier*/,
            bool /*CanUseLocalBarrierWithCondition*/, std::string /*Condition*/>
 clang::dpct::InterproceduralAnalyzer::isSafeToUseLocalBarrier(
     const std::map<const ParmVarDecl *, std::set<DREInfo>> &DefDREInfoMap,
     const SyncCallInfo &SCI) {
-#ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
-  std::cout << "===== isSafeToUseLocalBarrier =====" << std::endl;
-#endif
-  std::set<std::string> ConditionSet;
-  for (auto &DefDREInfo : DefDREInfoMap) {
-    bool FoundRead = false;
-    bool FoundWrite = false;
-    bool DREInPredecessors = false;
-    bool DREInSuccessors = false;
-    std::set<const DeclRefExpr *> WriteAfterWriteDRE;
-    for (auto &DREInfo : DefDREInfo.second) {
-      if (DREInfo.SL.isMacroID() || (DREInfo.AM == AccessMode::ReadWrite)) {
-#ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
-        std::cout << "isSafeToUseLocalBarrier False case 1" << std::endl;
-#endif
-        return {false, false, ""};
-      }
-      if (DREInfo.AM == AccessMode::Read) {
-        FoundRead = true;
-      } else if (DREInfo.AM == AccessMode::Write) {
-        FoundWrite = true;
-      }
-      if (isInRanges(DREInfo.SL, SCI.Predecessors)) {
-        DREInPredecessors = true;
-      }
-      if (isInRanges(DREInfo.SL, SCI.Successors)) {
-        DREInSuccessors = true;
-      }
-
-      if (FoundRead && FoundWrite) {
-#ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
-        std::cout << "isSafeToUseLocalBarrier False case 2" << std::endl;
-#endif
-        return {false, false, ""};
-      }
-      if (FoundWrite && DREInPredecessors && DREInSuccessors) {
-        WriteAfterWriteDRE.insert(DREInfo.DRE);
-      }
-    }
-    if (!WriteAfterWriteDRE.empty()) {
-      auto StepStr = isAnalyzableWriteInLoop(WriteAfterWriteDRE);
-      if (StepStr.empty()) {
-#ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
-        std::cout << "isSafeToUseLocalBarrier False case 3" << std::endl;
-#endif
-        return {false, false, ""};
-      }
-      ConditionSet.insert(StepStr);
-    }
-  }
-
-  if (!ConditionSet.empty()) {
-#ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
-    std::cout << "isSafeToUseLocalBarrier True with condition" << std::endl;
-#endif
-    // local_range(2) loop0     loop1    loop2    ... loopn
-    //      0         mem[0]    mem[s]   mem[2s]      mem[ns]
-    //      1         mem[1+0]  mem[1+s] mem[1+2s]    mem[1+ns]
-    //      2         mem[2+0]  mem[2+s] mem[2+2s]    mem[2+ns]
-    //     ...
-    //      m         mem[m+0]  mem[m+s] mem[m+2s]    mem[m+ns]
-    //
-    // We can make sure that there is no overlap in the same iteration since idx
-    // should equal to `local_id(2) + C`.
-    // Next, we need to make sure there is no overlap among iterations.
-    // The memory range in an iteration is `local_range(2)`, then if
-    // `s > local_range(2)`, the next iteration start point is larger than
-    // previous end, so there is no overlap.
-
-    std::string RHS;
-    if (ConditionSet.size() == 1) {
-      RHS = *ConditionSet.begin();
-    } else {
-      RHS = "std::min(";
-      for (const auto &C : ConditionSet) {
-        RHS = RHS + C + ", ";
-      }
-      RHS = RHS.substr(0, RHS.size() - 2) + ")";
-    }
-
-    // No need to call DpctGlobalInfo::getItem() here.
-    // It has been invoked in SyncThreadsRule.
-    if (DpctGlobalInfo::getAssumedNDRangeDim() == 1 && KernelDim == 1)
-      return {false, true, "item_ct1.get_local_range(0) < " + RHS};
-    else
-      return {false, true, "item_ct1.get_local_range(2) < " + RHS};
-  }
-#ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
-  std::cout << "isSafeToUseLocalBarrier True" << std::endl;
-#endif
   return {true, false, ""};
 }
 

@@ -2461,7 +2461,7 @@ class DeviceFunctionInfo
   };
   struct BarrierFenceSpaceAnalysisInfo {
     std::map<std::string, SyncCallInfo> SycnCallSCIMap;
-    std::map<std::string, std::vector<unsigned int>> AffectedByWhichParams;
+    IntraproceduralAnalyzerResult IAR;
   };
   BarrierFenceSpaceAnalysisInfo BFSAI;
 
@@ -2506,13 +2506,11 @@ public:
           ChildDFI->getParentDFIs().insert(weak_from_this());
         }
       }
+      // Assuming this call containing __syncthreads, check which input
+      // parameters will affect its migration.
+      IntraproceduralAnalyzer IA;
+      BFSAI.IAR = IA.analyze(C);
     }
-
-    // Assuming this call containing __syncthreads, check which input parameters
-    // will affect its migration.
-
-
-
     return Call;
   }
   void addVar(std::shared_ptr<MemVarInfo> Var) { VarMap.addVar(Var); }

@@ -12339,7 +12339,7 @@ void SyncThreadsMigrationRule::registerMatcher(MatchFinder &MF) {
 
 void SyncThreadsMigrationRule::runRule(const MatchFinder::MatchResult &Result) {
   static std::map<std::string, bool> LocationResultMapForTemplate;
-  auto emplaceReplacement = [&](BarrierFenceSpaceAnalyzerResult Res,
+  auto emplaceReplacement = [&](InterproceduralAnalyzerResult Res,
                                 const CallExpr *CE) {
     std::string Replacement;
     if (Res.CanUseLocalBarrier) {
