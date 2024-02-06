@@ -12338,6 +12338,10 @@ void SyncThreadsMigrationRule::registerMatcher(MatchFinder &MF) {
 }
 
 void SyncThreadsMigrationRule::runRule(const MatchFinder::MatchResult &Result) {
+  return;
+
+
+
   static std::map<std::string, bool> LocationResultMapForTemplate;
   auto emplaceReplacement = [&](InterproceduralAnalyzerResult Res,
                                 const CallExpr *CE) {

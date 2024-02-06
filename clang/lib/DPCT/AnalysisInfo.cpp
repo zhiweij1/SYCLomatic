@@ -4776,6 +4776,40 @@ void DeviceFunctionInfo::buildInfo() {
                       Call.second->getTextureObjectList());
   }
   VarMap.removeDuplicateVar();
+  // TODO: do inter-procedural analysis for __syncthreads migration
+  //       emplace replacements for __syncthreads in this DFI
+  for (const auto &SyncCall : BFSAI.SycnCallLocationMap) {
+    InterproceduralAnalyzerResult Res; // TODO: use the analyzed result
+    std::string Replacement;
+    if (Res.CanUseLocalBarrier) {
+      if (Res.MayDependOn1DKernel) {
+        DiagnosticsUtils::report(std::get<0>(SyncCall.second),
+                                 std::get<1>(SyncCall.second),
+                                 Diagnostics::ONE_DIMENSION_KERNEL_BARRIER,
+                                 true, false, Res.GlobalFunctionName);
+      }
+      Replacement = getItemName() + ".barrier(" + MapNames::getClNamespace() +
+                    "access::fence_space::local_space)";
+    } else if (Res.CanUseLocalBarrierWithCondition) {
+      DiagnosticsUtils::report(std::get<0>(SyncCall.second),
+                               std::get<1>(SyncCall.second),
+                               Diagnostics::ONE_DIMENSION_KERNEL_BARRIER, true,
+                               false, Res.GlobalFunctionName);
+      Replacement = "(" + Res.Condition + ") ? " + getItemName() + ".barrier(" +
+                    MapNames::getClNamespace() +
+                    "access::fence_space::local_space) : " + getItemName() +
+                    ".barrier()";
+    } else {
+      DiagnosticsUtils::report(
+          std::get<0>(SyncCall.second), std::get<1>(SyncCall.second),
+          Diagnostics::BARRIER_PERFORMANCE_TUNNING, true, false, "nd_item");
+      Replacement = getItemName() + ".barrier()";
+    }
+    DpctGlobalInfo::getInstance().addReplacement(
+        std::make_shared<ExtReplacement>(
+            std::get<0>(SyncCall.second), std::get<1>(SyncCall.second),
+            std::get<2>(SyncCall.second), Replacement, nullptr));
+  }
 }
 std::string
 DeviceFunctionInfo::getExtraParameters(const clang::tooling::UnifiedPath &Path,

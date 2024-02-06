@@ -43,7 +43,7 @@ bool clang::dpct::IntraproceduralAnalyzer::Visit(const CallExpr *CE) {
   for (const auto &Arg : CE->arguments())
     DeviceFunctionCallArgs.insert(Arg);
 
-  if (FuncName == "__syncthreads") {
+  if (FuncName == "__syncthreads" || isUserDefinedDecl(FuncDecl)) {
     SyncCallInfo SCI;
     SCI.Predecessors.insert(
         SourceRange(FD->getBody()->getBeginLoc(), CE->getBeginLoc()));

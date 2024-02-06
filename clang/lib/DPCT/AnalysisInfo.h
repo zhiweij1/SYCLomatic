@@ -2460,7 +2460,9 @@ class DeviceFunctionInfo
     bool IsReferenced = false;
   };
   struct BarrierFenceSpaceAnalysisInfo {
-    std::map<std::string, SyncCallInfo> SycnCallSCIMap;
+    std::map<std::string,
+             std::tuple<tooling::UnifiedPath, unsigned int, unsigned int>>
+        SycnCallLocationMap;
     IntraproceduralAnalyzerResult IAR;
   };
   BarrierFenceSpaceAnalysisInfo BFSAI;
@@ -2486,21 +2488,15 @@ public:
     if constexpr (std::is_same<CallT, CallExpr>::value) {
       if (C->getDirectCallee()) {
         if (C->getDirectCallee()->getNameAsString() == "__syncthreads") {
-          std::string Key = getCombinedStrFromLoc(C->getBeginLoc());
-          SyncCallInfo SCI;
-          const CompoundStmt *CS = getFunctionBody(C);
-          SCI.Predecessors.insert(
-              SourceRange(CS->getBeginLoc(), C->getBeginLoc()));
-          SCI.Successors.insert(SourceRange(C->getEndLoc(), CS->getEndLoc()));
-          if (const Stmt *LoopNode = findOuterMostLoopNodeInFunction(C, CS)) {
-            SCI.Predecessors.insert(
-                SourceRange(LoopNode->getBeginLoc(), LoopNode->getEndLoc()));
-            SCI.Successors.insert(
-                SourceRange(LoopNode->getBeginLoc(), LoopNode->getEndLoc()));
-          }
-          BFSAI.SycnCallSCIMap.insert(std::make_pair(Key, SCI));
+          auto LocInfo = dpct::DpctGlobalInfo::getLocInfo(C->getBeginLoc());
+          std::string Key = LocInfo.first.getCanonicalPath().str() + ":" +
+                            std::to_string(LocInfo.second);
+          std::tuple<tooling::UnifiedPath, unsigned int, unsigned int> Loc;
+          std::get<0>(Loc) = LocInfo.first;
+          std::get<1>(Loc) = LocInfo.second;
+          std::get<2>(Loc) = std::strlen("__syncthreads");
+          BFSAI.SycnCallLocationMap.insert(std::make_pair(Key, Loc));
         }
-
         if (auto ChildDFI =
                 DeviceFunctionDecl::LinkRedecls(C->getDirectCallee())) {
           ChildDFI->getParentDFIs().insert(weak_from_this());
