@@ -614,10 +614,24 @@ void clang::dpct::IntraproceduralAnalyzer::simplifyMap(
 }
 
 clang::dpct::InterproceduralAnalyzerResult
-clang::dpct::InterproceduralAnalyzer::analyze(const CallExpr *CE,
-                                              bool SkipCacheInAnalyzer) {
-  return InterproceduralAnalyzerResult(false, false, false,
-                                         GlobalFunctionName);
+clang::dpct::InterproceduralAnalyzer::analyze(
+    const std::shared_ptr<DeviceFunctionInfo> DFI,
+    std::string SyncCallCombinedLoc) {
+  auto queryKernelDim = [](const std::shared_ptr<DeviceFunctionInfo> DFI)
+      -> std::pair<int /*kernel dim*/, int /*kernel block dim*/> {
+    int BlockDim = DFI->KernelCallBlockDim;
+    const auto MVM =
+        MemVarMap::getHeadWithoutPathCompression(&(DFI->getVarMap()));
+    if (!MVM)
+      return {3, BlockDim};
+    return {MVM->Dim, BlockDim};
+  };
+  std::tie(KernelDim, KernelCallBlockDim) = queryKernelDim(DFI);
+
+  // TODO: Need do analysis for all syncthreads call in this DFI's ancestors and this DFI's decendents.
+  //       The results need be cached and reuse at the next time.
+
+  return InterproceduralAnalyzerResult(false, false, false, GlobalFunctionName);
 }
 
 clang::dpct::IntraproceduralAnalyzerResult
@@ -630,17 +644,11 @@ clang::dpct::IntraproceduralAnalyzer::analyze(const CallExpr *CE) {
   // Init values
   this->FD = FD;
 
-  CELoc = getHashStrFromLoc(CE->getBeginLoc());
   FDLoc = getHashStrFromLoc(FD->getBeginLoc());
 
   auto FDIter = CachedResults.find(FDLoc);
   if (FDIter != CachedResults.end()) {
-    auto CEIter = FDIter->second.find(CELoc);
-    if (CEIter != FDIter->second.end()) {
-      return CEIter->second;
-    } else {
-      return IntraproceduralAnalyzerResult(true);
-    }
+    return FDIter->second;
   }
 
 #ifdef __DEBUG_BARRIER_FENCE_SPACE_ANALYZER
@@ -648,8 +656,6 @@ clang::dpct::IntraproceduralAnalyzer::analyze(const CallExpr *CE) {
 #endif
 
   if (!this->TraverseDecl(const_cast<FunctionDecl *>(FD))) {
-    CachedResults[FDLoc] =
-        std::unordered_map<std::string, IntraproceduralAnalyzerResult>();
     return IntraproceduralAnalyzerResult(true);
   }
 
@@ -677,22 +683,22 @@ clang::dpct::IntraproceduralAnalyzer::analyze(const CallExpr *CE) {
   std::cout << "===== SyncCall info contnet end =====" << std::endl;
 #endif
 
+  std::unordered_map<
+      std::string /*call's combined loc string*/,
+      std::unordered_map<unsigned int /*parameter idx*/, AffectedResult>>
+      Map;
   for (auto &SyncCall : SyncCallsVec) {
-    IntraproceduralAnalyzerResult Value(
-        affectedByWhichParameters(DefLocInfoMap, SyncCall.second));
-    CachedResults[FDLoc][getHashStrFromLoc(SyncCall.first->getBeginLoc())] =
-        Value;
+    Map.insert(std::make_pair(
+        getCombinedStrFromLoc(SyncCall.first->getBeginLoc()),
+        affectedByWhichParameters(DefLocInfoMap, SyncCall.second)));
   }
+  IntraproceduralAnalyzerResult Value(Map);
+  CachedResults[FDLoc] = Value;
 
   // find the result in the new map
   FDIter = CachedResults.find(FDLoc);
   if (FDIter != CachedResults.end()) {
-    auto CEIter = FDIter->second.find(CELoc);
-    if (CEIter != FDIter->second.end()) {
-      return CEIter->second;
-    } else {
-      return IntraproceduralAnalyzerResult(true);
-    }
+    return FDIter->second;
   }
   return IntraproceduralAnalyzerResult(true);
 }
@@ -802,7 +808,7 @@ clang::dpct::InterproceduralAnalyzer::isSafeToUseLocalBarrier(
   return {true, false, ""};
 }
 
-std::map<unsigned int /*parameter idx*/, AffectedResult>
+std::unordered_map<unsigned int /*parameter idx*/, AffectedResult>
 IntraproceduralAnalyzer::affectedByWhichParameters(
     const std::map<const ParmVarDecl *, std::set<DREInfo>> &DefDREInfoMap,
     const SyncCallInfo &SCI) {
@@ -816,8 +822,7 @@ IntraproceduralAnalyzer::affectedByWhichParameters(
     assert(0 && "PVD is not in the FD.");
   };
 
-  std::map<unsigned int /*parameter idx*/,
-           AffectedResult>
+  std::unordered_map<unsigned int /*parameter idx*/, AffectedResult>
       AffectingParameters;
   for (auto &DefDREInfo : DefDREInfoMap) {
     bool FoundRead = false;
@@ -875,7 +880,5 @@ IntraproceduralAnalyzer::affectedByWhichParameters(
   return AffectingParameters;
 }
 
-std::unordered_map<
-    std::string,
-    std::unordered_map<std::string, clang::dpct::IntraproceduralAnalyzerResult>>
+std::unordered_map<std::string, clang::dpct::IntraproceduralAnalyzerResult>
     clang::dpct::IntraproceduralAnalyzer::CachedResults;

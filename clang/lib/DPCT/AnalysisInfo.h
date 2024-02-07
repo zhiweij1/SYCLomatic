@@ -2459,13 +2459,12 @@ class DeviceFunctionInfo
   struct ParameterProps {
     bool IsReferenced = false;
   };
-  struct BarrierFenceSpaceAnalysisInfo {
+  struct {
     std::map<std::string,
              std::tuple<tooling::UnifiedPath, unsigned int, unsigned int>>
         SycnCallLocationMap;
     IntraproceduralAnalyzerResult IAR;
-  };
-  BarrierFenceSpaceAnalysisInfo BFSAI;
+  } BarrierAnalysisInfo;
 
 public:
   DeviceFunctionInfo(size_t ParamsNum, size_t NonDefaultParamNum,
@@ -2495,17 +2494,17 @@ public:
           std::get<0>(Loc) = LocInfo.first;
           std::get<1>(Loc) = LocInfo.second;
           std::get<2>(Loc) = std::strlen("__syncthreads");
-          BFSAI.SycnCallLocationMap.insert(std::make_pair(Key, Loc));
+          BarrierAnalysisInfo.SycnCallLocationMap.insert(std::make_pair(Key, Loc));
         }
         if (auto ChildDFI =
                 DeviceFunctionDecl::LinkRedecls(C->getDirectCallee())) {
           ChildDFI->getParentDFIs().insert(weak_from_this());
         }
       }
-      // Assuming this call containing __syncthreads, check which input
-      // parameters will affect its migration.
-      IntraproceduralAnalyzer IA;
-      BFSAI.IAR = IA.analyze(C);
+      if (BarrierAnalysisInfo.IAR.isDefault()) {
+        IntraproceduralAnalyzer IA;
+        BarrierAnalysisInfo.IAR = IA.analyze(C);
+      }
     }
     return Call;
   }

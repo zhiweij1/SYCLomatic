@@ -4778,8 +4778,10 @@ void DeviceFunctionInfo::buildInfo() {
   VarMap.removeDuplicateVar();
   // TODO: do inter-procedural analysis for __syncthreads migration
   //       emplace replacements for __syncthreads in this DFI
-  for (const auto &SyncCall : BFSAI.SycnCallLocationMap) {
-    InterproceduralAnalyzerResult Res; // TODO: use the analyzed result
+  for (const auto &SyncCall : BarrierAnalysisInfo.SycnCallLocationMap) {
+    InterproceduralAnalyzer IA;
+    InterproceduralAnalyzerResult Res =
+        IA.analyze(shared_from_this(), SyncCall.first);
     std::string Replacement;
     if (Res.CanUseLocalBarrier) {
       if (Res.MayDependOn1DKernel) {

@@ -42,17 +42,24 @@ struct AffectedResult {
 };
 
 struct IntraproceduralAnalyzerResult {
-  IntraproceduralAnalyzerResult() {}
+  IntraproceduralAnalyzerResult() : IsDefault(true) {}
   IntraproceduralAnalyzerResult(bool UnsupportedCase)
       : UnsupportedCase(UnsupportedCase) {}
   IntraproceduralAnalyzerResult(
-      std::map<unsigned int /*parameter idx*/, AffectedResult>
+      std::unordered_map<
+          std::string /*call's combined loc string*/,
+          std::unordered_map<unsigned int /*parameter idx*/, AffectedResult>>
           AffectedByWhichParameters)
       : UnsupportedCase(false),
         AffectedByWhichParameters(AffectedByWhichParameters) {}
+  bool isDefault() const noexcept { return IsDefault; }
 
+private:
+  bool IsDefault = false;
   bool UnsupportedCase = true;
-  std::map<unsigned int /*parameter idx*/, AffectedResult>
+  std::unordered_map<
+      std::string /*call's combined loc string*/,
+      std::unordered_map<unsigned int /*parameter idx*/, AffectedResult>>
       AffectedByWhichParameters;
 };
 
@@ -208,7 +215,7 @@ private:
   void simplifyMap(
       std::map<const ParmVarDecl *, std::set<DREInfo>> &DefDREInfoMap);
   bool hasOverlappingAccessAmongWorkItems(const DeclRefExpr *DRE);
-  std::map<unsigned int /*parameter idx*/, AffectedResult>
+  std::unordered_map<unsigned int /*parameter idx*/, AffectedResult>
   affectedByWhichParameters(
       const std::map<const ParmVarDecl *, std::set<DREInfo>> &DefDREInfoMap,
       const SyncCallInfo &SCI);
@@ -220,12 +227,9 @@ private:
   AccessMode getAccessKindReadWrite(const DeclRefExpr *);
 
   const FunctionDecl *FD = nullptr;
-  std::string CELoc;
   std::string FDLoc;
-  /// (FD location, (Call location, result))
-  static std::unordered_map<
-      std::string,
-      std::unordered_map<std::string, IntraproceduralAnalyzerResult>>
+  /// (FD location, result)
+  static std::unordered_map<std::string, IntraproceduralAnalyzerResult>
       CachedResults;
   std::vector<std::pair<const CallExpr *, SyncCallInfo>> SyncCallsVec;
   std::unordered_map<const ParmVarDecl *, std::set<const DeclRefExpr *>>
@@ -246,7 +250,8 @@ private:
 class InterproceduralAnalyzer : public BarrierFenceSpaceAnalyzer {
 public:
   InterproceduralAnalyzerResult
-  analyze(const CallExpr *CE, bool SkipCacheInAnalyzer = false);
+  analyze(const std::shared_ptr<DeviceFunctionInfo> DFI,
+          std::string SyncCallCombinedLoc);
 
 private:
   std::tuple<bool /*CanUseLocalBarrier*/,
