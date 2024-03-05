@@ -6,6 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 #include "MigrateCmakeScript.h"
+#include "Error.h"
 #include "PatternRewriter.h"
 #include "SaveNewFiles.h"
 #include "Statics.h"
@@ -233,7 +234,12 @@ void collectCmakeScripts(const clang::tooling::UnifiedPath &InRoot,
     if (Iter->type() == fs::file_type::regular_file) {
       llvm::StringRef Name =
           llvm::sys::path::filename(FilePath.getCanonicalPath());
+#ifdef _WIN32
+      if (Name.lower() == "cmakelists.txt" ||
+          llvm::StringRef(Name.lower()).ends_with(".cmake")) {
+#else
       if (Name == "CMakeLists.txt" || Name.ends_with(".cmake")) {
+#endif
         CmakeScriptFilesSet.push_back(FilePath.getCanonicalPath().str());
       }
     }
@@ -247,15 +253,7 @@ bool loadBufferFromScriptFile(const clang::tooling::UnifiedPath InRoot,
   if (!rewriteDir(OutFileName, InRoot, OutRoot)) {
     return false;
   }
-  auto Parent = path::parent_path(OutFileName.getCanonicalPath());
-  std::error_code EC;
-  EC = fs::create_directories(Parent);
-  if ((bool)EC) {
-    std::string ErrMsg = "[ERROR] Create Directory : " + Parent.str() +
-                         " fail: " + EC.message() + "\n";
-    PrintMsg(ErrMsg);
-  }
-
+  createDirectories(path::parent_path(OutFileName.getCanonicalPath()));
   CmakeScriptFileBufferMap[OutFileName] = readFile(InFileName);
   return true;
 }
@@ -382,7 +380,7 @@ static void parseVariable(const std::string &Input) {
         std::string VarName;
         std::string Value;
 
-        // Get the begin of firt argument of set
+        // Get the begin of first argument of set
         Index = skipWhiteSpaces(Input, Index);
         Begin = Index;
 
@@ -475,7 +473,7 @@ void processCmakeMinimumRequired(std::string &Input, size_t &Size,
   std::string Value;
   size_t Begin, End;
 
-  // Get the begin of firt argument of cmake_minimum_required
+  // Get the begin of first argument of cmake_minimum_required
   Index = skipWhiteSpaces(Input, Index);
   Begin = Index;
 
@@ -502,6 +500,51 @@ void processCmakeMinimumRequired(std::string &Input, size_t &Size,
   Input.replace(Begin, End - Begin, ReplStr);
   Size = Input.size();            // Update string size
   Index = Begin + ReplStr.size(); // Update index
+}
+
+void processExecuteProcess(std::string &Input, size_t &Size, size_t &Index) {
+  std::string VarName;
+  std::string Value;
+  size_t Begin, End;
+
+  // Get the begin of first argument
+  Index = skipWhiteSpaces(Input, Index);
+  Begin = Index;
+
+  Index = gotoEndOfCmakeCommandStmt(Input, Index);
+  End = Index;
+
+  // Get the value of the second argument
+  Value = Input.substr(Begin, End - Begin);
+
+  size_t Pos = Value.find("-Xcompiler");
+  if (Pos != std::string::npos) {
+    size_t NextPos = Pos + strlen("-Xcompiler");
+    NextPos = skipWhiteSpaces(Value, NextPos);
+
+    // clang-format off
+    // To check if the value of opition "-Xcompiler" is a string literal, if it
+    // is a string literal, just remove '"' for outmost '"' and '\\' for inner string, like:
+    // -Xcompiler "-dumpfullversion" -> -Xcompiler -dumpfullversion
+    // -Xcompiler "\"-dumpfullversion \"" -> -Xcompiler -dumpfullversion
+    // clang-format on
+    if (Value[NextPos] == '"') {
+      Value[NextPos] = ' ';
+      size_t Size = Value.size();
+      size_t Idx = NextPos;
+      for (; Idx < Size; Idx++) {
+        if (Value[Idx] == '\\') {
+          Value[Idx] = ' ';
+        } else if (Value[Idx] == '"') {
+          Value[Idx] = ' ';
+        }
+      }
+    }
+  }
+
+  Input.replace(Begin, End - Begin, Value);
+  Size = Input.size();          // Update string size
+  Index = Begin + Value.size(); // Update index
 }
 
 // Implicit migration rule is used when the migration logic is difficult to be
@@ -613,7 +656,10 @@ static void applyCmakeMigrationRules() {
                         void (*)(std::string &, size_t &, size_t &)>
       DispatchTable = {
           {"cmake_minimum_required", processCmakeMinimumRequired},
+          {"execute_process", processExecuteProcess},
       };
+
+  setFileTypeProcessed(SourceFileType::SFT_CMakeScript);
 
   for (auto &Entry : CmakeScriptFileBufferMap) {
     llvm::outs() << "Processing: " + Entry.first.getPath() + "\n";
@@ -649,16 +695,8 @@ static void storeBufferToFile() {
   for (auto &Entry : CmakeScriptFileBufferMap) {
     auto &FileName = Entry.first;
     auto &Buffer = Entry.second;
-    std::ofstream Out(FileName.getCanonicalPath().str(), std::ios::binary);
-    if (Out.fail()) {
-      std::string ErrMsg =
-          "[ERROR] Create file : " + std::string(FileName.getCanonicalPath()) +
-          " failure!\n";
-      PrintMsg(ErrMsg);
-    }
 
-    llvm::raw_os_ostream Stream(Out);
-
+    dpct::RawFDOStream Stream(FileName.getCanonicalPath().str());
     // Restore original endline format
     auto IsCRLF = ScriptFileCRLFMap[FileName];
     if (IsCRLF) {
@@ -678,7 +716,7 @@ static void storeBufferToFile() {
 // cmake systaxes need to be processed by implicit migration rules, as they are
 // difficult to be described with yaml based rule syntax.
 static const std::vector<std::string> ImplicitMigrationRules = {
-    "cmake_minimum_required"};
+    "cmake_minimum_required", "execute_process"};
 
 static void reserveImplicitMigrationRules() {
   for (const auto &Rule : ImplicitMigrationRules) {

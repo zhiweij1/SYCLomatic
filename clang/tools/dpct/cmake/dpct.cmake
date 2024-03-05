@@ -93,8 +93,10 @@ endmacro()
 
 if(WIN32)
     set(DNN_LIB "dnnl.lib")
+    set(MKL_LIB "-Qmkl")
 else()
     set(DNN_LIB "dnnl")
+    set(MKL_LIB "-qmkl")
 endif()
 
 # Link MKL library to target
@@ -109,3 +111,8 @@ macro(DPCT_HELPER_ADD_MKL_TO_TARGET target)
     message(FATAL_ERROR "Unsupported platform")
   endif()
 endmacro()
+
+set(CMAKE_SYCL_HOST_COMPILER "icpx")
+set(CMAKE_SYCL_COMPILER "icpx")
+set(CMAKE_SYCL_ARCHITECTURES "")
+set(CMAKE_SYCL_FLAGS "")

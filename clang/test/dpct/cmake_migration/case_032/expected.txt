@@ -1,11 +1,11 @@
-link_libraries(main PRIVATE cxxopts fmt::fmt -qmkl)
+link_libraries(main PRIVATE cxxopts fmt::fmt ${MKL_LIB})
 
-link_libraries(main PUBLIC  -qmkl)
+link_libraries(main PUBLIC  ${MKL_LIB})
 
 link_libraries(foo3 PUBLIC   ${TCNN_LIBRARIES} fmt)
 
 link_libraries(transformer_engine PUBLIC 
-   -qmkl
+   ${MKL_LIB}
    
    
    
@@ -21,3 +21,11 @@ link_libraries(${PROJECT_NAME}
    
    
 )
+
+if (WIN32)
+    # As of 12.3.1 CUDA Tookit for Windows does not offer a static cublas library
+    set(LLAMA_EXTRA_LIBS ${LLAMA_EXTRA_LIBS}  ${MKL_LIB} ${DNN_LIB})
+else ()
+    set(LLAMA_EXTRA_LIBS ${LLAMA_EXTRA_LIBS}  ${MKL_LIB} ${DNN_LIB})
+endif()
+set(LLAMA_EXTRA_LIBS ${LLAMA_EXTRA_LIBS}  ${MKL_LIB} ${DNN_LIB})

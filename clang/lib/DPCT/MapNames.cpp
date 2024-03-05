@@ -184,9 +184,9 @@ void MapNames::setExplicitNamespaceMap() {
       {"ushort2", std::make_shared<TypeNameRule>(getClNamespace() + "ushort2")},
       {"ushort3", std::make_shared<TypeNameRule>(getClNamespace() + "ushort3")},
       {"ushort4", std::make_shared<TypeNameRule>(getClNamespace() + "ushort4")},
-      {"cublasHandle_t",
-       std::make_shared<TypeNameRule>(getDpctNamespace() + "queue_ptr",
-                                      HelperFeatureEnum::device_ext)},
+      {"cublasHandle_t", std::make_shared<TypeNameRule>(
+                             getDpctNamespace() + "blas::descriptor_ptr",
+                             HelperFeatureEnum::device_ext)},
       {"cublasStatus_t", std::make_shared<TypeNameRule>("int")},
       {"cublasStatus", std::make_shared<TypeNameRule>("int")},
       {"cublasGemmAlgo_t", std::make_shared<TypeNameRule>("int")},
@@ -303,13 +303,13 @@ void MapNames::setExplicitNamespaceMap() {
       {"cudaArray",
        std::make_shared<TypeNameRule>(
            DpctGlobalInfo::useExtBindlessImages()
-               ? getClNamespace() + "ext::oneapi::experimental::image_mem"
+               ? getDpctNamespace() + "experimental::image_mem_wrapper"
                : getDpctNamespace() + "image_matrix",
            HelperFeatureEnum::device_ext)},
       {"cudaArray_t",
        std::make_shared<TypeNameRule>(
            DpctGlobalInfo::useExtBindlessImages()
-               ? getDpctNamespace() + "experimental::image_mem_ptr"
+               ? getDpctNamespace() + "experimental::image_mem_wrapper_ptr"
                : getDpctNamespace() + "image_matrix_p",
            HelperFeatureEnum::device_ext)},
       {"cudaTextureDesc",
@@ -1713,6 +1713,8 @@ void MapNames::setExplicitNamespaceMap() {
       {"cublasDestroy_v2", "handle = nullptr"},
       {"cublasSetStream_v2", "handle = s"},
       {"cublasGetStream_v2", "s = handle"},
+      {"cublasSetKernelStream",
+       getDpctNamespace() + "blas::descriptor::set_saved_queue"},
       {"cublasSgemm_v2", "oneapi::mkl::blas::column_major::gemm"},
       {"cublasDgemm_v2", "oneapi::mkl::blas::column_major::gemm"},
       {"cublasCgemm_v2", "oneapi::mkl::blas::column_major::gemm"},
@@ -4264,6 +4266,7 @@ const MapNames::MapTy MapNames::MacrosMap{
     {"__CUDA_RUNTIME_H__", "__DPCT_HPP__"},
     {"CUDART_VERSION", "DPCT_COMPAT_RT_VERSION"},
     {"__CUDART_API_VERSION", "DPCT_COMPAT_RT_VERSION"},
+    {"CUDA_VERSION", "DPCT_COMPAT_RT_VERSION"},
     {"__CUDACC_VER_MAJOR__", "DPCT_COMPAT_RT_MAJOR_VERSION"},
     {"__CUDACC_VER_MINOR__", "DPCT_COMPAT_RT_MINOR_VERSION"},
     {"CUBLAS_V2_H_", "MKL_SYCL_HPP"},

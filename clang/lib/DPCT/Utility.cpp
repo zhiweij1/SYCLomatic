@@ -17,6 +17,7 @@
 #include "Statics.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTTypeTraits.h"
+#include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
@@ -24,6 +25,7 @@
 #include "clang/Tooling/Core/Replacement.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Errc.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include <algorithm>
@@ -2059,6 +2061,42 @@ bool needExtraParens(const Expr *E) {
   case Stmt::CXXOperatorCallExprClass:
     return static_cast<const CXXOperatorCallExpr *>(E)->getOperator() !=
            clang::OO_Subscript;  
+  default:
+    return true;
+  }
+}
+
+bool needExtraParensInMemberExpr(const Expr *E) {
+  E = E->IgnoreUnlessSpelledInSource();
+  switch (E->getStmtClass()) {
+  case Stmt::CallExprClass: {
+    const CallExpr *CE = static_cast<const CallExpr *>(E);
+    if (const FunctionDecl *FD = CE->getDirectCallee()) {
+      std::string Name = FD->getNameAsString();
+      if (!dpct::DpctGlobalInfo::useIntelDeviceMath() &&
+          (Name == "__h2div" || Name == "__hadd2" || Name == "__hadd2_rn" ||
+           Name == "__hfma2" || Name == "__hmul2" || Name == "__hmul2_rn" ||
+           Name == "__hsub2" || Name == "__hsub2_rn" || Name == "h2div" ||
+           Name == "__hadd_rn" || Name == "__hdiv" || Name == "__hfma" ||
+           Name == "__hmul" || Name == "__hmul_rn" || Name == "__hsub" ||
+           Name == "__hsub_rn" || Name == "hdiv")) {
+        return true;
+      }
+    }
+    return false;
+  }
+  case Stmt::ArraySubscriptExprClass:
+  case Stmt::ParenExprClass:
+  case Stmt::DeclRefExprClass:
+  case Stmt::CXXConstructExprClass:
+    return false;
+  case Stmt::UnaryOperatorClass: {
+    const UnaryOperator *UO = static_cast<const UnaryOperator *>(E);
+    if (UO->getOpcode() == UnaryOperator::Opcode::UO_PostInc ||
+        UO->getOpcode() == UnaryOperator::Opcode::UO_PostDec)
+      return false;
+    return true;
+  }
   default:
     return true;
   }
@@ -4731,6 +4769,69 @@ std::string appendPath(const std::string &P1, const std::string &P2) {
   llvm::sys::path::append(TempPath, P2);
   return TempPath.str().str();
 }
+
+void createDirectories(const clang::tooling::UnifiedPath &FilePath,
+                       bool IgnoreExisting) {
+  if (std::error_code EC = llvm::sys::fs::create_directories(
+          FilePath.getCanonicalPath(), false)) {
+    if (EC == llvm::errc::file_exists) {
+      if (IgnoreExisting &&
+          llvm::sys::fs::is_directory(FilePath.getCanonicalPath())) {
+        auto perm = sys::fs::getPermissions(FilePath.getCanonicalPath());
+        static const auto owner_perm =
+            sys::fs::perms::owner_write | sys::fs::perms::owner_read;
+        if (perm && (perm.get() & owner_perm)) {
+          return;
+        }
+      }
+      ShowStatus(MigrationSaveOutFail);
+      dpctExit(MigrationSaveOutFail);
+    } else {
+      std::string ErrMsg =
+          "[ERROR] Create Directory : " + FilePath.getPath().str() +
+          " fail: " + EC.message() + "\n";
+      clang::dpct::PrintMsg(ErrMsg);
+      dpctExit(MigrationErrorCannotWrite); // Exit the execution directly.
+    }
+  }
+}
+
+void writeDataToFile(const std::string &FileName, const std::string &Data) {
+  RawFDOStream File(FileName);
+  File << Data;
+}
+
+void appendDataToFile(const std::string &FileName, const std::string &Data) {
+  RawFDOStream File(FileName, llvm::sys::fs::OpenFlags::OF_Append);
+  File << Data;
+}
+
+RawFDOStream::RawFDOStream(StringRef FileName)
+    : llvm::raw_fd_ostream(FileName, EC), FileName(FileName) {
+  if ((bool)EC) {
+    std::string ErrMsg = "[ERROR] Open: " + FileName.str() + " Fail!\n";
+    dpct::PrintMsg(ErrMsg);
+    dpctExit(MigrationErrorCannotWrite);
+  }
+}
+RawFDOStream::RawFDOStream(StringRef FileName, llvm::sys::fs::OpenFlags OF)
+    : llvm::raw_fd_ostream(FileName, EC, OF), FileName(FileName) {
+  if ((bool)EC) {
+    std::string ErrMsg = "[ERROR] Open: " + FileName.str() + " Fail!\n";
+    dpct::PrintMsg(ErrMsg);
+    dpctExit(MigrationErrorCannotWrite);
+  }
+}
+
+RawFDOStream::~RawFDOStream() {
+  this->close();
+  if ((bool)this->error()) {
+    std::string ErrMsg = "[ERROR] Close " + FileName.str() + " Fail!\n";
+    dpct::PrintMsg(ErrMsg);
+    dpctExit(MigrationErrorCannotWrite);
+  }
+}
+
 std::set<const clang::DeclRefExpr *>
 matchTargetDREInScope(const VarDecl *TargetDecl, const Stmt *Range) {
   std::set<const DeclRefExpr *> Set;

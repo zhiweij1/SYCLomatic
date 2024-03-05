@@ -18,6 +18,7 @@ enum ProcessStatus {
   MigrationNoCodeChangeHappen = 1,
   MigrationSkipped = 2,
   InterceptBuildSuccess = 3,
+  MigrationCmakeScriptCompleted = 4,
   MigrationError = -1,
   MigrationSaveOutFail = -2, /*eg. have no write permission*/
   MigrationErrorRunFromSDKFolder = -3,
@@ -64,6 +65,7 @@ enum ProcessStatus {
   MigarteBuildScriptIncorrectUse = -50,
   MigarteBuildScriptAndMigarteBuildScriptOnlyBothUse = -51,
   MigrationErrorNoExplicitInRootAndCMakeScript = -52,
+  MigrationErrorCannotWrite = -53,
 };
 
 namespace clang {

@@ -199,16 +199,18 @@ bool IncludesCallbacks::ReplaceCuMacro(const Token &MacroNameTok) {
         return false;
       }
     }
+    if (MacroName == "CUDART_VERSION" || MacroName == "__CUDART_API_VERSION" ||
+        MacroName == "CUDA_VERSION") {
+      // These two macros are defined by CUDA header file
+      auto LocInfo = DpctGlobalInfo::getLocInfo(MacroNameTok.getLocation());
+      auto Ver = clang::getCudaVersionPair(DpctGlobalInfo::getSDKVersion());
+      DpctGlobalInfo::getInstance()
+          .insertFile(LocInfo.first)
+          ->setRTVersionValue(
+              std::to_string(Ver.first * 1000 + Ver.second * 10));
+    }
     if (DpctGlobalInfo::getContext().getLangOpts().CUDA) {
-      if (MacroName == "CUDART_VERSION" ||
-          MacroName == "__CUDART_API_VERSION") {
-        auto LocInfo = DpctGlobalInfo::getLocInfo(MacroNameTok.getLocation());
-        auto Ver = clang::getCudaVersionPair(DpctGlobalInfo::getSDKVersion());
-        DpctGlobalInfo::getInstance()
-            .insertFile(LocInfo.first)
-            ->setRTVersionValue(
-                std::to_string(Ver.first * 1000 + Ver.second * 10));
-      }
+      // These two macros are defined by CUDA compiler
       if (MacroName == "__CUDACC_VER_MAJOR__") {
         auto LocInfo = DpctGlobalInfo::getLocInfo(MacroNameTok.getLocation());
         auto Ver = clang::getCudaVersionPair(DpctGlobalInfo::getSDKVersion());
@@ -3766,7 +3768,7 @@ std::string getValueStr(const Expr *Expr, std::string ExprStr,
     }
   }
   requestFeature(HelperFeatureEnum::device_ext);
-  return MapNames::getDpctNamespace() + "get_value(" + ExprStr + ", *" +
+  return MapNames::getDpctNamespace() + "get_value(" + ExprStr + ", " +
          QueueStr + ")";
 }
 
@@ -3948,6 +3950,14 @@ void RandomFunctionCallRule::runRule(const MatchFinder::MatchResult &Result) {
       FuncName == "curandCreateGeneratorHost") {
     const auto *const Arg0 = CE->getArg(0);
     requestFeature(HelperFeatureEnum::device_ext);
+    std::string RHS =
+        buildString(" = ", MapNames::getDpctNamespace(),
+                    "rng::create_host_rng(", ExprAnalysis::ref(CE->getArg(1)));
+    if (FuncName == "curandCreateGeneratorHost") {
+      RHS = buildString(RHS, ", ", MapNames::getDpctNamespace(),
+                        "cpu_device().default_queue()");
+    }
+    RHS = buildString(RHS, ")");
     if (Arg0->getStmtClass() == Stmt::UnaryOperatorClass) {
       const auto *const UO = cast<const UnaryOperator>(Arg0);
       auto SE = UO->getSubExpr();
@@ -3955,19 +3965,12 @@ void RandomFunctionCallRule::runRule(const MatchFinder::MatchResult &Result) {
           (SE->getStmtClass() == Stmt::DeclRefExprClass ||
            SE->getStmtClass() == Stmt::MemberExprClass)) {
         return emplaceTransformation(new ReplaceStmt(
-            CE, false,
-            buildString(ExprAnalysis::ref(SE),
-                        " = " + MapNames::getDpctNamespace() +
-                            "rng::create_host_rng(",
-                        ExprAnalysis::ref(CE->getArg(1)), ")")));
+            CE, false, buildString(ExprAnalysis::ref(SE), RHS)));
       }
     }
-    return emplaceTransformation(
-        new ReplaceStmt(CE, false,
-                        buildString("*(", ExprAnalysis::ref(CE->getArg(0)),
-                                    ") = " + MapNames::getDpctNamespace() +
-                                        "rng::create_host_rng(",
-                                    ExprAnalysis::ref(CE->getArg(1)), ")")));
+    return emplaceTransformation(new ReplaceStmt(
+        CE, false,
+        buildString("*(", ExprAnalysis::ref(CE->getArg(0)), ")", RHS)));
   }
   if (FuncName == "curandDestroyGenerator") {
     return emplaceTransformation(new ReplaceStmt(
@@ -4504,7 +4507,12 @@ void BLASFunctionCallRule::runRule(const MatchFinder::MatchResult &Result) {
       int IndexTemp = -1;
       std::string CurrentArgumentRepl;
       const CStyleCastExpr *CSCE = nullptr;
-      if (isReplIndex(i, ReplInfo.BufferIndexInfo, IndexTemp)) {
+      if (i == 0) {
+        CurrentArgumentRepl = ExprAnalysis::ref(CE->getArg(0));
+        if (needExtraParensInMemberExpr(CE->getArg(0)))
+          CurrentArgumentRepl = "(" + CurrentArgumentRepl + ")";
+        CurrentArgumentRepl += "->get_queue()";
+      } else if (isReplIndex(i, ReplInfo.BufferIndexInfo, IndexTemp)) {
         if (DpctGlobalInfo::getUsmLevel() == UsmLevel::UL_Restricted) {
           if (ReplInfo.BufferTypeInfo[IndexTemp] == "int") {
             requestFeature(HelperFeatureEnum::device_ext);
@@ -4650,7 +4658,12 @@ void BLASFunctionCallRule::runRule(const MatchFinder::MatchResult &Result) {
       int IndexTemp = -1;
       std::string CurrentArgumentRepl;
       const CStyleCastExpr *CSCE = nullptr;
-      if (isReplIndex(i, ReplInfo.BufferIndexInfo, IndexTemp)) {
+      if (i == 0) {
+        CurrentArgumentRepl = ExprAnalysis::ref(CE->getArg(0));
+        if (needExtraParensInMemberExpr(CE->getArg(0)))
+          CurrentArgumentRepl = "(" + CurrentArgumentRepl + ")";
+        CurrentArgumentRepl += "->get_queue()";
+      } else if (isReplIndex(i, ReplInfo.BufferIndexInfo, IndexTemp)) {
         if (DpctGlobalInfo::getUsmLevel() == UsmLevel::UL_Restricted) {
           if (ReplInfo.BufferTypeInfo[IndexTemp] == "int") {
             auto DefaultQueue = DpctGlobalInfo::getDefaultQueue(CE->getArg(i));
@@ -4783,9 +4796,9 @@ void BLASFunctionCallRule::runRule(const MatchFinder::MatchResult &Result) {
     auto ReplInfoPair = MapNames::LegacyBLASFuncReplInfoMap.find(FuncName);
     MapNames::BLASFuncComplexReplInfo ReplInfo = ReplInfoPair->second;
     requestFeature(HelperFeatureEnum::device_ext);
-    CallExprReplStr = CallExprReplStr + ReplInfo.ReplName + "(*" +
+    CallExprReplStr = CallExprReplStr + ReplInfo.ReplName + "(" +
                       MapNames::getDpctNamespace() +
-                      "get_current_device().get_saved_queue()";
+                      "blas::descriptor::get_saved_queue()";
     std::string IndentStr =
         getIndent(PrefixInsertLoc, (Result.Context)->getSourceManager()).str();
 
@@ -5146,41 +5159,6 @@ void BLASFunctionCallRule::runRule(const MatchFinder::MatchResult &Result) {
             insertAroundRange(PrefixInsertLoc, SuffixInsertLoc,
                               std::move(PrefixInsertStr), "");
         }
-      }
-    }
-  } else if (FuncName == "cublasSetKernelStream") {
-    SourceRange SR = getFunctionRange(CE);
-    auto Len = SM->getDecomposedLoc(SR.getEnd()).second -
-               SM->getDecomposedLoc(SR.getBegin()).second;
-
-    std::string Repl;
-
-    dpct::ExprAnalysis EA(CE->getArg(0));
-    if (isPlaceholderIdxDuplicated(CE))
-      return;
-    int Index = DpctGlobalInfo::getHelperFuncReplInfoIndexThenInc();
-    buildTempVariableMap(Index, CE, HelperFuncType::HFT_CurrentDevice);
-    requestFeature(HelperFeatureEnum::device_ext);
-    Repl = "{{NEEDREPLACED" + std::to_string(Index) + "}}.set_saved_queue(" +
-           EA.getReplacedString() + ")";
-
-    if (SM->isMacroArgExpansion(CE->getBeginLoc()) &&
-        SM->isMacroArgExpansion(CE->getEndLoc())) {
-      if (IsAssigned) {
-        requestFeature(HelperFeatureEnum::device_ext);
-        emplaceTransformation(new ReplaceText(
-            SR.getBegin(), Len, "DPCT_CHECK_ERROR(" + Repl + ")"));
-      } else {
-        emplaceTransformation(
-            new ReplaceText(SR.getBegin(), Len, std::move(Repl)));
-      }
-    } else {
-      if (IsAssigned) {
-        requestFeature(HelperFeatureEnum::device_ext);
-        emplaceTransformation(
-            new ReplaceStmt(CE, true, "DPCT_CHECK_ERROR(" + Repl + ")"));
-      } else {
-        emplaceTransformation(new ReplaceStmt(CE, true, Repl));
       }
     }
   } else if (FuncName == "cublasInit" || FuncName == "cublasShutdown" ||
@@ -7545,9 +7523,6 @@ void EventAPICallRule::handleEventRecordWithProfilingDisabled(
 void EventAPICallRule::handleEventRecord(const CallExpr *CE,
                                          const MatchFinder::MatchResult &Result,
                                          bool IsAssigned) {
-  if (!getDecl(CE->getArg(0)))
-    return;
-
   if (DpctGlobalInfo::getEnablepProfilingFlag()) {
     // Option '--enable-profiling' is enabled
     handleEventRecordWithProfilingEnabled(CE, Result, IsAssigned);
@@ -8136,6 +8111,43 @@ void EventAPICallRule::handleOrdinaryCalls(const CallExpr *Call) {
 
 REGISTER_RULE(EventAPICallRule, PassKind::PK_Migration)
 
+void ProfilingEnableOnDemandRule::registerMatcher(MatchFinder &MF) {
+  MF.addMatcher(callExpr(allOf(callee(functionDecl(hasAnyName(
+                                   "cudaEventElapsedTime", "cudaEventRecord"))),
+                               parentStmt()))
+                    .bind("cudaEventElapsedTimeCall"),
+                this);
+  MF.addMatcher(
+      callExpr(allOf(callee(functionDecl(hasName("cudaEventElapsedTime"))),
+                     unless(parentStmt())))
+          .bind("cudaEventElapsedTimeUsed"),
+      this);
+}
+
+// When cudaEventElapsedTimeCall() is called in the source code, event profiling
+// opton "--enable-profiling" is enabled to measure the execution time of a
+// specific kernel or command in SYCL device.
+void ProfilingEnableOnDemandRule::runRule(
+    const MatchFinder::MatchResult &Result) {
+
+  if (DpctGlobalInfo::getEnablepProfilingFlag())
+    return;
+
+  const CallExpr *CE =
+      getNodeAsType<CallExpr>(Result, "cudaEventElapsedTimeCall");
+  if (!CE) {
+    if (!(CE = getNodeAsType<CallExpr>(Result, "cudaEventElapsedTimeUsed")))
+      return;
+  }
+
+  if (!CE->getDirectCallee())
+    return;
+
+  DpctGlobalInfo::setEnablepProfilingFlag(true);
+}
+
+REGISTER_RULE(ProfilingEnableOnDemandRule, PassKind::PK_Analysis)
+
 void StreamAPICallRule::registerMatcher(MatchFinder &MF) {
   auto streamFunctionName = [&]() {
     return hasAnyName("cudaStreamCreate", "cudaStreamCreateWithFlags",
@@ -8296,7 +8308,7 @@ void StreamAPICallRule::runRule(const MatchFinder::MatchResult &Result) {
     ReplStr += StmtStr1;
     ReplStr += ") = 0";
     if (IsAssigned) {
-      ReplStr = "DPCT_CHECK_ERROR(" + ReplStr + ")";
+      ReplStr = "DPCT_CHECK_ERROR((" + ReplStr + "))";
       requestFeature(HelperFeatureEnum::device_ext);
     }
     const std::string Name =
@@ -10106,18 +10118,10 @@ void MemoryMigrationRule::mallocMigration(
       std::string Replacement;
       llvm::raw_string_ostream OS(Replacement);
       DerefExpr(C->getArg(0), C).print(OS);
-      OS << " = new " << MapNames::getClNamespace()
-         << "ext::oneapi::experimental::image_mem("
-         << MapNames::getClNamespace()
-         << "ext::oneapi::experimental::image_descriptor("
-         << ExprAnalysis::ref(C->getArg(2)) << ", ";
+      OS << " = new " << MapNames::getDpctNamespace()
+         << "experimental::image_mem_wrapper(";
       DerefExpr(C->getArg(1), C).print(OS);
-      OS << ".get_channel_order(), ";
-      DerefExpr(C->getArg(1), C).print(OS);
-      OS << ".get_channel_type()), ";
-      int Index = DpctGlobalInfo::getHelperFuncReplInfoIndexThenInc();
-      buildTempVariableMap(Index, C, HelperFuncType::HFT_DefaultQueue);
-      OS << "{{NEEDREPLACEQ" + std::to_string(Index) + "}})";
+      OS << ", " << ExprAnalysis::ref(C->getArg(2)) << ")";
       return emplaceTransformation(new ReplaceStmt(C, Replacement));
     }
     mallocArrayMigration(C, Name, 3, *Result.SourceManager);
@@ -10126,19 +10130,11 @@ void MemoryMigrationRule::mallocMigration(
       std::string Replacement;
       llvm::raw_string_ostream OS(Replacement);
       DerefExpr(C->getArg(0), C).print(OS);
-      OS << " = new " << MapNames::getClNamespace()
-         << "ext::oneapi::experimental::image_mem("
-         << MapNames::getClNamespace()
-         << "ext::oneapi::experimental::image_descriptor({"
-         << ExprAnalysis::ref(C->getArg(2)) << ", "
-         << ExprAnalysis::ref(C->getArg(3)) << "}, ";
+      OS << " = new " << MapNames::getDpctNamespace()
+         << "experimental::image_mem_wrapper(";
       DerefExpr(C->getArg(1), C).print(OS);
-      OS << ".get_channel_order(), ";
-      DerefExpr(C->getArg(1), C).print(OS);
-      OS << ".get_channel_type()), ";
-      int Index = DpctGlobalInfo::getHelperFuncReplInfoIndexThenInc();
-      buildTempVariableMap(Index, C, HelperFuncType::HFT_DefaultQueue);
-      OS << "{{NEEDREPLACEQ" + std::to_string(Index) + "}})";
+      OS << ", " << ExprAnalysis::ref(C->getArg(2)) << ", "
+         << ExprAnalysis::ref(C->getArg(3)) << ")";
       return emplaceTransformation(new ReplaceStmt(C, Replacement));
     }
     mallocArrayMigration(C, Name, 4, *Result.SourceManager);
@@ -10937,12 +10933,7 @@ void MemoryMigrationRule::miscMigration(const MatchFinder::MatchResult &Result,
   } else if (Name == "cudaGetChannelDesc") {
     std::ostringstream OS;
     printDerefOp(OS, C->getArg(0));
-    OS << " = ";
-    if (DpctGlobalInfo::useExtBindlessImages())
-      OS << MapNames::getDpctNamespace() << "experimental::get_channel("
-         << ExprAnalysis::ref(C->getArg(1)) << ")";
-    else
-      OS << ExprAnalysis::ref(C->getArg(1)) << "->get_channel()";
+    OS << " = " << ExprAnalysis::ref(C->getArg(1)) << "->get_channel()";
     emplaceTransformation(new ReplaceStmt(C, OS.str()));
     requestFeature(HelperFeatureEnum::device_ext);
   } else if (Name == "cuMemGetInfo_v2" || Name == "cudaMemGetInfo") {
@@ -11025,13 +11016,7 @@ void MemoryMigrationRule::cudaArrayGetInfo(
   std::ostringstream OS;
   std::string Arg3Str = ExprAnalysis::ref(C->getArg(3));
   printDerefOp(OS, C->getArg(0));
-  OS << " = ";
-  if (DpctGlobalInfo::useExtBindlessImages())
-    OS << MapNames::getDpctNamespace() << "experimental::get_channel("
-       << Arg3Str << ");";
-  else
-    OS << Arg3Str << "->get_channel();";
-  OS << getNL() << IndentStr;
+  OS << " = " << Arg3Str << "->get_channel();" << getNL() << IndentStr;
   printDerefOp(OS, C->getArg(1));
   OS << " = " << Arg3Str << "->get_range();" << getNL() << IndentStr;
   printDerefOp(OS, C->getArg(2));

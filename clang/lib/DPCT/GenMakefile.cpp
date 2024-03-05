@@ -9,6 +9,7 @@
 #include "AnalysisInfo.h"
 #include "Diagnostics.h"
 #include "SaveNewFiles.h"
+#include "Utility.h"
 #include "ValidateArguments.h"
 
 #include "clang/Tooling/Refactoring.h"
@@ -314,7 +315,7 @@ static void getCompileInfo(
     } else {
       SmallString<512> OutDirectory(OrigFileName.getCanonicalPath());
       llvm::sys::path::replace_path_prefix(OutDirectory,
-                                           OutRoot.getCanonicalPath(), ".");
+                                           InRoot.getCanonicalPath(), ".");
       clang::tooling::CompilationInfo CmpInfo;
       CmpInfo.MigratedFileName = OutDirectory.c_str();
       CmpInfo.CompileOptions = NewOptions;
@@ -385,13 +386,7 @@ static void genMakefile(
                          path::parent_path(TargetName.getPath()).str());
 
     if (!llvm::sys::fs::exists(Parent)) {
-      std::error_code EC;
-      EC = llvm::sys::fs::create_directories(Parent);
-      if ((bool)EC) {
-        std::string ErrMsg = "[ERROR] Create Directory : " + Parent +
-                             " fail: " + EC.message() + "\n";
-        PrintMsg(ErrMsg);
-      }
+      clang::dpct::createDirectories(Parent);
     }
 
     auto CmpInfos = Entry.second;
@@ -400,12 +395,6 @@ static void genMakefile(
     for (const auto &CmpInfo : CmpInfos) {
       std::string MigratedFileName = CmpInfo.MigratedFileName;
       SmallString<512> MigratedName(MigratedFileName);
-
-      if (path::is_absolute(MigratedName)) {
-        SmallString<512> CWD;
-        llvm::sys::fs::current_path(CWD);
-        path::replace_path_prefix(MigratedName, CWD, ".");
-      }
 
       SmallString<512> FilePath = StringRef(MigratedName);
       path::replace_extension(FilePath, "o");
@@ -527,11 +516,6 @@ static void genMakefile(
       for (unsigned Idx = 0; Idx < Entry.second.size(); Idx++) {
 
         SmallString<512> Source = StringRef(Entry.second[Idx].MigratedFileName);
-        if (path::is_absolute(Source)) {
-          SmallString<512> CWD;
-          llvm::sys::fs::current_path(CWD);
-          path::replace_path_prefix(Source, CWD, ".");
-        }
 
         auto Option = Entry.second[Idx].CompileOptions;
         SmallString<512> Obj = StringRef(Source);
@@ -560,12 +544,7 @@ static void genMakefile(
 
   std::string FileOut =
       dpct::appendPath(OutRoot.getCanonicalPath().str(), BuildScriptName);
-  std::ofstream File;
-  File.open(FileOut, std::ios::binary);
-  if (File) {
-    File << OS.str();
-    File.close();
-  }
+  writeDataToFile(FileOut, OS.str());
 }
 
 void genBuildScript(clang::tooling::RefactoringTool &Tool,
