@@ -1,4 +1,4 @@
-// RUN: dpct --format-range=none --usm-level=none -out-root %T/kernel_without_name %s --cuda-include-path="%cuda-path/include" -- -x cuda --cuda-host-only -fno-delayed-template-parsing
+// RUN: dpct --format-range=none --usm-level=none -out-root %T/kernel_without_name %s --cuda-include-path="%cuda-path/include" -- -x cuda --cuda-host-only
 // RUN: FileCheck --input-file %T/kernel_without_name/kernel_without_name.dp.cpp --match-full-lines %s
 // RUN: %if build_lit %{icpx -c -fsycl %T/kernel_without_name/kernel_without_name.dp.cpp -o %T/kernel_without_name/kernel_without_name.dp.o %}
 
@@ -214,4 +214,32 @@ template <class T> void run_foo5(A<T> &a) {
   //CHECK-NEXT:      });
   //CHECK-NEXT:  });
   foo_kernel4<<<1, 1>>>(~a);
+}
+
+__global__ void foo_kernel5(unsigned int ui) {}
+
+void run_foo6() {
+  dim3 grid;
+  //CHECK:q_ct1.submit(
+  //CHECK-NEXT:  [&](sycl::handler &cgh) {
+  //CHECK-NEXT:    unsigned int grid_x_grid_y_ct0 = grid[2] * grid[1];
+  //CHECK-EMPTY:
+  //CHECK-NEXT:    cgh.parallel_for(
+  //CHECK-NEXT:      sycl::nd_range<3>(sycl::range<3>(1, 1, 1), sycl::range<3>(1, 1, 1)), 
+  //CHECK-NEXT:      [=](sycl::nd_item<3> item_ct1) {
+  //CHECK-NEXT:        foo_kernel5(grid_x_grid_y_ct0);
+  //CHECK-NEXT:      });
+  //CHECK-NEXT:  });
+  foo_kernel5<<<1, 1>>>(grid.x * grid.y);
+  //CHECK:q_ct1.submit(
+  //CHECK-NEXT:  [&](sycl::handler &cgh) {
+  //CHECK-NEXT:    unsigned int grid_x_ct0 = ++grid[2];
+  //CHECK-EMPTY:
+  //CHECK-NEXT:    cgh.parallel_for(
+  //CHECK-NEXT:      sycl::nd_range<3>(sycl::range<3>(1, 1, 1), sycl::range<3>(1, 1, 1)), 
+  //CHECK-NEXT:      [=](sycl::nd_item<3> item_ct1) {
+  //CHECK-NEXT:        foo_kernel5(grid_x_ct0);
+  //CHECK-NEXT:      });
+  //CHECK-NEXT:  });
+  foo_kernel5<<<1, 1>>>(++grid.x);
 }
