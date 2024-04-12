@@ -61,13 +61,12 @@ template <typename T> struct DataType<sycl::vec<T, 2>> {
   using T2 = std::complex<T>;
 };
 
-inline void matrix_mem_copy(void *to_ptr, const void *from_ptr,
-                            std::int64_t to_ld, std::int64_t from_ld,
-                            std::int64_t rows, std::int64_t cols,
-                            std::int64_t elem_size,
-                            memcpy_direction direction = automatic,
-                            sycl::queue &queue = dpct::get_default_queue(),
-                            bool async = false) {
+[[deprecated("Please use dpct::blas::matrix_mem_copy() instead.")]] inline void
+matrix_mem_copy(void *to_ptr, const void *from_ptr, int to_ld, int from_ld,
+                int rows, int cols, int elem_size,
+                memcpy_direction direction = automatic,
+                sycl::queue &queue = dpct::get_default_queue(),
+                bool async = false) {
   if (to_ptr == from_ptr && to_ld == from_ld) {
     return;
   }
@@ -117,12 +116,11 @@ matrix_mem_copy(void *to_ptr, const void *from_ptr, int to_ld, int from_ld,
 /// \param [in] async If this argument is true, the return of the function
 /// does NOT guarantee the copy is completed.
 template <typename T>
-inline void matrix_mem_copy(T *to_ptr, const T *from_ptr, std::int64_t to_ld,
-                            std::int64_t from_ld, std::int64_t rows,
-                            std::int64_t cols,
-                            memcpy_direction direction = automatic,
-                            sycl::queue &queue = dpct::get_default_queue(),
-                            bool async = false) {
+[[deprecated("Please use dpct::blas::matrix_mem_copy() instead.")]] inline void
+matrix_mem_copy(T *to_ptr, const T *from_ptr, int to_ld, int from_ld, int rows,
+                int cols, memcpy_direction direction = automatic,
+                sycl::queue &queue = dpct::get_default_queue(),
+                bool async = false) {
   using Ty = typename DataType<T>::T2;
   matrix_mem_copy((void *)to_ptr, (void *)from_ptr, to_ld, from_ld, rows, cols,
                   (std::int64_t)sizeof(Ty), direction, queue, async);
